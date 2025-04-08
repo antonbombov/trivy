@@ -6,7 +6,7 @@
     <style>
       * {
         font-family: Arial, Helvetica, sans-serif;
-        font-size: small;
+        font-size: medium;
       }
       h1 {
         text-align: center;
@@ -138,7 +138,7 @@
       {{- end }}
       {{- if (eq (len .Misconfigurations ) 0) }}
         <tr>
-          <th colspan="8">No Misconfigurations found</th>
+          <th colspan="6">No Misconfigurations found</th>
         </tr>
       {{- else }}
         <tr class="sub-header">
