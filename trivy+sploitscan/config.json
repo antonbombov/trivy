@@ -1,0 +1,7 @@
+{
+  "sploitscan_path": "c:\\work\\dist\\sploitscan\\SploitScan\\sploitscan.py",
+  "scan_directory": "c:\\work\\dist\\sploitscan\\SploitScan\\Scan",
+  "cache_directory": "c:\\work\\dist\\sploitscan\\SploitScan\\Scan\\cahce",
+  "max_workers": null,
+  "timeout": 60
+}
