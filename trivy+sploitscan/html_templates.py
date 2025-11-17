@@ -245,7 +245,7 @@ def get_javascript():
       }
     })();
 
-    // Filters: search, priority, severity, epss, cisa, exploits
+    // Filters: search, priority, severity, epss, cisa, exploits, status
     document.addEventListener('DOMContentLoaded', function() {
       const input = document.getElementById('searchInput');
       const epssInput = document.getElementById('filterEPSS');
@@ -258,6 +258,7 @@ def get_javascript():
       const vulnerabilityCards = document.querySelectorAll('[data-cve]');
       let selectedPrios = new Set();
       let selectedSeverities = new Set();
+      let selectedStatuses = new Set();  // ДОБАВЛЕНО
 
       // Initialize priority filters
       document.querySelectorAll('.prio').forEach(function(btn) {
@@ -289,6 +290,21 @@ def get_javascript():
         });
       });
 
+      // ДОБАВЛЕНО: Initialize status filters
+      document.querySelectorAll('.status').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const s = this.getAttribute('data-status');
+          if (selectedStatuses.has(s)) {
+            selectedStatuses.delete(s);
+            this.classList.remove('ring-2', 'ring-brand-600');
+          } else {
+            selectedStatuses.add(s);
+            this.classList.add('ring-2', 'ring-brand-600');
+          }
+          applyFilters();
+        });
+      });
+
       // Event listeners for other filters
       input.addEventListener('input', applyFilters);
       
@@ -314,13 +330,19 @@ def get_javascript():
             btn.classList.remove('ring-2', 'ring-brand-600');
           });
 
+          // ДОБАВЛЕНО: Reset status filters
+          selectedStatuses.clear();
+          document.querySelectorAll('.status').forEach(function(btn) {
+            btn.classList.remove('ring-2', 'ring-brand-600');
+          });
+
           applyFilters();
         });
       }
 
       function applyFilters() {
         const q = input.value.toLowerCase().trim();
-        const epssMin = epssInput ? parseFloat(epssInput.value) || 0 : 0;
+        const epssMin = epssInput ? parseFloat(epssInput.value) / 100 || 0 : 0;
 
         // Apply filters to all cards
         vulnerabilityCards.forEach(function(card) {
@@ -331,16 +353,13 @@ def get_javascript():
           const cardEpss = parseFloat(card.getAttribute('data-epss')) || 0;
           const cardCisa = card.getAttribute('data-cisa') === 'true';
           const cardExpl = card.getAttribute('data-expl') === 'true';
+          const cardStatus = card.getAttribute('data-status') || '';  // ДОБАВЛЕНО
 
           let visible = true;
 
           // Search by CVE ID OR Package name
-          if (q) {
-            const matchesCve = cardCve.toLowerCase().includes(q);
-            const matchesPackage = cardPackage.toLowerCase().includes(q);
-            if (!matchesCve && !matchesPackage) {
-              visible = false;
-            }
+          if (q && !cardCve.toLowerCase().includes(q) && !cardPackage.toLowerCase().includes(q)) {
+            visible = false;
           }
 
           // Priority filter
@@ -350,6 +369,11 @@ def get_javascript():
 
           // Severity filter
           if (selectedSeverities.size > 0 && !selectedSeverities.has(cardSeverity)) {
+            visible = false;
+          }
+
+          // ДОБАВЛЕНО: Status filter
+          if (selectedStatuses.size > 0 && !selectedStatuses.has(cardStatus)) {
             visible = false;
           }
 

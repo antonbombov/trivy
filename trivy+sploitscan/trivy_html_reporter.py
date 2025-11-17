@@ -162,6 +162,16 @@ def is_cisa_kev(vuln):
     cisa_data = sploitscan.get('cisa_kev', {})
     return cisa_data.get('cisa_status') == 'Listed'
 
+def format_epss(epss_score):
+    """Форматирует EPSS score в проценты"""
+    if epss_score == 'N/A':
+        return 'N/A'
+    try:
+        # Умножаем на 100 и форматируем с 2 знаками после запятой
+        return f"{float(epss_score) * 100:.2f}%"
+    except (ValueError, TypeError):
+        return 'N/A'
+
 def generate_html_content(trivy_data, stats, grouped_vulnerabilities):
     """
     Генерирует полный HTML контент
@@ -264,8 +274,19 @@ def generate_sidebar(grouped_vulnerabilities):
           </div>
           
           <div>
-            <label class="block text-xs font-medium muted mb-1">EPSS ≥</label>
-            <input id="filterEPSS" type="number" min="0" max="1" step="0.01" placeholder="0.00" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
+            <label class="block text-xs font-medium muted mb-1">EPSS ≥ %</label>
+            <input id="filterEPSS" type="number" min="0" max="100" step="0.01" placeholder="0.00%" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
+          </div>
+          
+          <!-- ДОБАВЛЕНО: Status filter -->
+          <div>
+            <label class="block text-xs font-medium muted mb-1">Status</label>
+            <div class="flex flex-wrap gap-2">
+              <button data-status="fixed" class="status chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Fixed</button>
+              <button data-status="affected" class="status chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Affected</button>
+              <button data-status="will_not_fix" class="status chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Will not fix</button>
+              <button data-status="unknown" class="status chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Unknown</button>
+            </div>
           </div>
           
           <div class="flex items-center gap-2">
@@ -437,7 +458,8 @@ def generate_vulnerability_card(vuln):
          data-severity="{severity}"
          data-epss="{epss_score if epss_score != 'N/A' else '0'}"
          data-cisa="{str(cisa_status == 'Listed').lower()}" 
-         data-expl="{str(has_exploits).lower()}">
+         data-expl="{str(has_exploits).lower()}"
+         data-status="{status.lower()}">
       
       <!-- Заголовок карточки -->
       <div class="flex justify-between items-start mb-3">
@@ -451,7 +473,7 @@ def generate_vulnerability_card(vuln):
           <span class="pill priority-{priority}">{priority}</span>
         </div>
         <div class="text-right text-sm">
-          <div class="muted">EPSS: {epss_score}</div>
+          <div class="muted">EPSS: {format_epss(epss_score)}</div>
           <div class="muted">Status: {status}</div>
         </div>
       </div>
@@ -500,7 +522,7 @@ def generate_vulnerability_card(vuln):
           <div>
             <h5 class="font-medium mb-2">EPSS Score</h5>
             <div class="text-sm">
-              <span class="muted">Probability:</span> {epss_score}
+              <span class="muted">Probability:</span> {format_epss(epss_score)}
             </div>
           </div>
           
