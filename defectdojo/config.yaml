@@ -1,0 +1,14 @@
+defectdojo:
+  url: "https://defectdojo.apps.ocp.dev.bench2.ppod.cbr.ru/"  # Замените на ваш URL
+  api_key: "e056bd6dc7b47e3b92e810e449ade5e034beec8d"             # Замените на ваш API ключ
+
+settings:
+  severity_levels: ["CRITICAL", "HIGH"]
+  require_exploits: true
+
+risk_accept:
+  Level: ["Medium", "Low"]
+  WithExploits: false
+  EPSS: 1
+  CisaKev: false
+  AllRequired: true
