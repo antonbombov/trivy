@@ -88,7 +88,7 @@ class DefectDojoEnricher:
                                 cvss_score = score
                                 break
                     
-                    # ИСПРАВЛЕННАЯ ЛОГИКА EPSS - безопасная
+                    # Безопасная логика EPSS
                     epss_score = 0.0
                     sploitscan_data = vulnerability.get("sploitscan", {})
                     if sploitscan_data:
@@ -156,44 +156,37 @@ class DefectDojoEnricher:
             if level_criteria:
                 severity_ok = cve_data["severity"] in [l.upper() for l in level_criteria]
                 checks.append(("Severity", severity_ok))
-                print(f"  {cve_data['cve_id']} - Severity {cve_data['severity']} in {level_criteria}: {severity_ok}")
             
             # Проверка наличия/отсутствия эксплойтов
-            if with_exploits is not None:
+            if with_exploits is not None:  # Если параметр указан
                 exploits_ok = cve_data["has_exploits"] == with_exploits
                 checks.append(("Exploits", exploits_ok))
-                print(f"  {cve_data['cve_id']} - Exploits {cve_data['has_exploits']} == {with_exploits}: {exploits_ok}")
             
             # Проверка EPSS
             if epss_threshold < 100:
                 epss_ok = cve_data["epss"] <= epss_threshold
                 checks.append(("EPSS", epss_ok))
-                print(f"  {cve_data['cve_id']} - EPSS {cve_data['epss']:.2f} <= {epss_threshold}: {epss_ok}")
             
             # Проверка CISA KEV
             if cisa_kev:
                 cisa_ok = cve_data["cisa_kev"]
                 checks.append(("CISA KEV", cisa_ok))
-                print(f"  {cve_data['cve_id']} - CISA KEV {cve_data['cisa_kev']}: {cisa_ok}")
             
             # Применяем логику "все или любое"
             if all_required:
                 # Все условия должны выполняться
                 if checks and all(check[1] for check in checks):
                     filtered_for_risk[unique_key] = cve_data
-                    print(f"  ✅ {cve_data['cve_id']} - ПРОШЕЛ (AllRequired)")
             else:
                 # Любое условие должно выполняться
                 if checks and any(check[1] for check in checks):
                     filtered_for_risk[unique_key] = cve_data
-                    print(f"  ✅ {cve_data['cve_id']} - ПРОШЕЛ (AnyRequired)")
-            print()  # пустая строка для разделения
         
         print(f"Найдено CVE для risk accept: {len(filtered_for_risk)}")
         return filtered_for_risk
     
     def find_finding_ids(self, product_id: int, filtered_cves: Dict[str, Dict]) -> Dict[str, List[int]]:
-        """Поиск ID findings по ТОЧНОМУ CVE ID в АКТИВНЫХ Engagement"""
+        """Поиск ID АКТИВНЫХ findings по ТОЧНОМУ CVE ID в АКТИВНЫХ Engagement"""
         findings_map = {}
         
         # Получаем список уникальных CVE ID для поиска
@@ -203,7 +196,7 @@ class DefectDojoEnricher:
             print("❌ Нет CVE ID для поиска findings")
             return findings_map
             
-        print(f"Поиск findings для {len(cve_ids)} уникальных CVE в АКТИВНЫХ Engagement...")
+        print(f"Поиск АКТИВНЫХ findings для {len(cve_ids)} уникальных CVE в АКТИВНЫХ Engagement...")
         print("Используется локальная фильтрация из-за бага в DefectDojo API")
         
         # Получаем ВСЕ findings из активных Engagement
@@ -221,8 +214,12 @@ class DefectDojoEnricher:
                 all_findings = data.get('results', [])
                 print(f"Всего findings в активных Engagement: {len(all_findings)}")
                 
-                # ПРОСТАЯ ЛОГИКА: для каждого finding ищем подходящую запись в filtered_cves
-                for finding in all_findings:
+                # Фильтруем только АКТИВНЫЕ findings
+                active_findings = [f for f in all_findings if f.get('active', False)]
+                print(f"Из них АКТИВНЫХ: {len(active_findings)}")
+                
+                # ПРОСТАЯ ЛОГИКА: для каждого АКТИВНОГО finding ищем подходящую запись в filtered_cves
+                for finding in active_findings:
                     vuln_ids = finding.get('vulnerability_ids', [])
                     finding_severity = finding.get('severity', '').upper()
                     
@@ -244,7 +241,7 @@ class DefectDojoEnricher:
                                     findings_map[unique_key] = []
                                 
                                 findings_map[unique_key].append(finding['id'])
-                                print(f"   НАЙДЕН finding {finding['id']} для {cve_id} ({cve_data['pkg_name']} {cve_data['pkg_version']}) - severity: {finding_severity}")
+                                print(f"   НАЙДЕН АКТИВНЫЙ finding {finding['id']} для {cve_id} ({cve_data['pkg_name']} {cve_data['pkg_version']}) - severity: {finding_severity}")
                             break
                 
                 # Статистика по найденным CVE
@@ -257,9 +254,9 @@ class DefectDojoEnricher:
                     if cve_id in found_cves:
                         count = sum(len(findings) for key, findings in findings_map.items() 
                                   if filtered_cves[key]["cve_id"] == cve_id)
-                        print(f"НАЙДЕНО findings для {cve_id}: {count} шт")
+                        print(f"НАЙДЕНО АКТИВНЫХ findings для {cve_id}: {count} шт")
                     else:
-                        print(f"НЕ НАЙДЕНО findings для {cve_id}")
+                        print(f"НЕ НАЙДЕНО АКТИВНЫХ findings для {cve_id}")
                         
             else:
                 print(f"Ошибка получения findings: {response.status_code}")
@@ -276,29 +273,21 @@ class DefectDojoEnricher:
             url = f"{self.config['defectdojo']['url']}/api/v2/findings/{finding_id}/"
             
             try:
-                # Шаг 1: Деактивируем finding
-                deactivate_response = self.session.patch(url, json={
+                response = self.session.patch(url, json={
                     "active": False,
-                    "verified": True
+                    "verified": True,
+                    "risk_accepted": True,
+                    "risk_acceptance_reason": reason
                 }, verify=False)
                 
-                if deactivate_response.status_code == 200:
-                    # Шаг 2: Принимаем риск
-                    risk_response = self.session.patch(url, json={
-                        "risk_accepted": True,
-                        "risk_acceptance_reason": reason
-                    }, verify=False)
-                    
-                    if risk_response.status_code == 200:
-                        print(f"✓ Risk accepted для finding {finding_id}")
-                        success_count += 1
-                    else:
-                        print(f"✗ Ошибка risk accept для finding {finding_id}: {risk_response.status_code}")
+                if response.status_code == 200:
+                    print(f"✓ Risk accepted для finding {finding_id}")
+                    success_count += 1
                 else:
-                    print(f"✗ Ошибка деактивации finding {finding_id}: {deactivate_response.status_code}")
+                    print(f"✗ Ошибка risk accept для finding {finding_id}: {response.status_code} - {response.text}")
                     
             except Exception as e:
-                print(f"✗ Ошибка для finding {finding_id}: {e}")
+                print(f"✗ Ошибка при risk accept finding {finding_id}: {e}")
         
         return success_count
     
