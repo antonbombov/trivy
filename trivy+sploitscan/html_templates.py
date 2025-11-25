@@ -258,7 +258,7 @@ def get_javascript():
       const vulnerabilityCards = document.querySelectorAll('[data-cve]');
       let selectedPrios = new Set();
       let selectedSeverities = new Set();
-      let selectedStatuses = new Set();  // ДОБАВЛЕНО
+      let selectedStatuses = new Set();
 
       // Initialize priority filters
       document.querySelectorAll('.prio').forEach(function(btn) {
@@ -290,7 +290,7 @@ def get_javascript():
         });
       });
 
-      // ДОБАВЛЕНО: Initialize status filters
+      // Initialize status filters
       document.querySelectorAll('.status').forEach(function(btn) {
         btn.addEventListener('click', function() {
           const s = this.getAttribute('data-status');
@@ -330,7 +330,6 @@ def get_javascript():
             btn.classList.remove('ring-2', 'ring-brand-600');
           });
 
-          // ДОБАВЛЕНО: Reset status filters
           selectedStatuses.clear();
           document.querySelectorAll('.status').forEach(function(btn) {
             btn.classList.remove('ring-2', 'ring-brand-600');
@@ -353,7 +352,7 @@ def get_javascript():
           const cardEpss = parseFloat(card.getAttribute('data-epss')) || 0;
           const cardCisa = card.getAttribute('data-cisa') === 'true';
           const cardExpl = card.getAttribute('data-expl') === 'true';
-          const cardStatus = card.getAttribute('data-status') || '';  // ДОБАВЛЕНО
+          const cardStatus = card.getAttribute('data-status') || '';
 
           let visible = true;
 
@@ -372,7 +371,7 @@ def get_javascript():
             visible = false;
           }
 
-          // ДОБАВЛЕНО: Status filter
+          // Status filter
           if (selectedStatuses.size > 0 && !selectedStatuses.has(cardStatus)) {
             visible = false;
           }

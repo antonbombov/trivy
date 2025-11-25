@@ -172,6 +172,59 @@ def format_epss(epss_score):
     except (ValueError, TypeError):
         return 'N/A'
 
+def get_cvss_data(vuln):
+    """Извлекает CVSS данные с учетом приоритетов вендоров"""
+    cvss_data = vuln.get('CVSS', {})
+    severity_source = vuln.get('SeveritySource', '')
+    vendor_severity = vuln.get('VendorSeverity', {})
+    
+    # 1. Пытаемся взять из того же источника что и Severity
+    if severity_source and severity_source in cvss_data:
+        data = cvss_data[severity_source]
+        v3_score = data.get('V3Score')
+        v2_score = data.get('V2Score')
+        v3_vector = data.get('V3Vector')
+        v2_vector = data.get('V2Vector')
+        
+        # Предпочитаем V3 над V2
+        if v3_score is not None:
+            return v3_score, v3_vector or v2_vector or 'N/A'
+        elif v2_score is not None:
+            return v2_score, v2_vector or 'N/A'
+    
+    # 2. Ищем источник с максимальным VendorSeverity
+    if vendor_severity:
+        # Сортируем вендоров по убыванию VendorSeverity
+        sorted_vendors = sorted(vendor_severity.items(), key=lambda x: x[1], reverse=True)
+        for vendor, score in sorted_vendors:
+            if vendor in cvss_data:
+                data = cvss_data[vendor]
+                v3_score = data.get('V3Score')
+                v2_score = data.get('V2Score')
+                v3_vector = data.get('V3Vector')
+                v2_vector = data.get('V2Vector')
+                
+                # Предпочитаем V3 над V2
+                if v3_score is not None:
+                    return v3_score, v3_vector or v2_vector or 'N/A'
+                elif v2_score is not None:
+                    return v2_score, v2_vector or 'N/A'
+    
+    # 3. Fallback: берем первого попавшегося (оригинальная логика)
+    for source, data in cvss_data.items():
+        v3_score = data.get('V3Score')
+        v2_score = data.get('V2Score')
+        v3_vector = data.get('V3Vector')
+        v2_vector = data.get('V2Vector')
+        
+        # Предпочитаем V3 над V2
+        if v3_score is not None:
+            return v3_score, v3_vector or v2_vector or 'N/A'
+        elif v2_score is not None:
+            return v2_score, v2_vector or 'N/A'
+    
+    return 'N/A', 'N/A'
+
 def generate_html_content(trivy_data, stats, grouped_vulnerabilities):
     """
     Генерирует полный HTML контент
@@ -385,29 +438,24 @@ def generate_vulnerability_card(vuln):
     status = vuln.get('Status', 'Unknown')
     references = vuln.get('References', [])
     
-    # CVSS данные
-    cvss_score = 'N/A'
-    cvss_vector = 'N/A'
-    cvss_data = vuln.get('CVSS', {})
-    for source, data in cvss_data.items():
-        if 'V3Score' in data:
-            cvss_score = data['V3Score']
-        if 'V3Vector' in data:
-            cvss_vector = data['V3Vector']
-        break
+    # CVSS данные (ИСПРАВЛЕННАЯ ЛОГИКА)
+    cvss_score, cvss_vector = get_cvss_data(vuln)
     
     # Определяем цвет для CVSS
     cvss_color = 'gray'
     if cvss_score != 'N/A':
-        score = float(cvss_score)
-        if score >= 9.0:
-            cvss_color = 'red'
-        elif score >= 7.0:
-            cvss_color = 'orange'
-        elif score >= 4.0:
-            cvss_color = 'yellow'
-        else:
-            cvss_color = 'green'
+        try:
+            score = float(cvss_score)
+            if score >= 9.0:
+                cvss_color = 'red'
+            elif score >= 7.0:
+                cvss_color = 'orange'
+            elif score >= 4.0:
+                cvss_color = 'yellow'
+            else:
+                cvss_color = 'green'
+        except (ValueError, TypeError):
+            cvss_color = 'gray'
     
     # Данные из SploitScan
     sploitscan = vuln.get('sploitscan', {})

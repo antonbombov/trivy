@@ -48,13 +48,22 @@ def main():
             # ГЕНЕРАЦИЯ HTML ОТЧЕТА
             print(f"\n🌐 Генерация HTML отчета...")
             html_start_time = time.time()
-            html_file = generate_trivy_html_report(enriched_file)
-            html_time = time.time() - html_start_time
             
-            if html_file:
-                print(f"✅ HTML отчет создан за {html_time:.1f}с: {html_file.name}")
+            # ЯВНО УКАЗЫВАЕМ ПУТЬ К ОБОГАЩЕННОМУ ФАЙЛУ ИЗ КОНФИГА
+            enriched_path = scan_dir / f"{trivy_file.stem}_enriched.json"
+            
+            print(f"🔍 Ищем обогащенный отчет: {enriched_path}")
+            
+            if enriched_path.exists():
+                html_file = generate_trivy_html_report(enriched_path)
+                html_time = time.time() - html_start_time
+                
+                if html_file:
+                    print(f"✅ HTML отчет создан за {html_time:.1f}с: {html_file.name}")
+                else:
+                    print(f"❌ Ошибка создания HTML отчета")
             else:
-                print(f"❌ Ошибка создания HTML отчета")
+                print(f"❌ Обогащенный файл не найден: {enriched_path}")
                 
         else:
             print(f"❌ ОШИБКА")
