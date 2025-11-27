@@ -16,6 +16,7 @@ def main():
     print("=" * 60)
     
     print(f"📁 Ищем отчеты в: {scan_dir}")
+    print(f"📝 Логи SploitScan: {scan_dir / 'logs'} (логи пишутся если CVE не закэширована)")
     
     # Ищем отчеты в указанной папке scan_dir
     trivy_files = list(scan_dir.glob("*.json"))
