@@ -1,22 +1,56 @@
 # main.py
 import time
+import shutil
 from pathlib import Path
 from enrichment_core import enrich_trivy_report
 from trivy_html_reporter import generate_trivy_html_report
 from config_manager import load_config, setup_directories
+
+def cleanup_logs(scan_dir):
+    """
+    Очищает папку с логами перед запуском
+    """
+    log_dir = scan_dir / "logs"
+    
+    if log_dir.exists():
+        try:
+            # Удаляем все файлы в папке logs
+            for log_file in log_dir.glob("*.log"):
+                try:
+                    log_file.unlink()
+                    print(f"🗑️  Удален лог: {log_file.name}")
+                except Exception as e:
+                    print(f"⚠️  Не удалось удалить {log_file.name}: {e}")
+            
+            # Если папка пустая - удаляем её (опционально)
+            if not any(log_dir.iterdir()):
+                log_dir.rmdir()
+                print(f"🗑️  Удалена пустая папка логов")
+            else:
+                print(f"📁 Папка логов очищена: {log_dir}")
+                
+        except Exception as e:
+            print(f"❌ Ошибка при очистке логов: {e}")
+    else:
+        print(f"📁 Папка логов не существует, создадим при необходимости: {log_dir}")
 
 def main():
     script_dir = Path(__file__).parent
     config = load_config()
     scan_dir, cache_dir = setup_directories(config)
     
+    # Очищаем логи перед запуском
     print("=" * 60)
     print("ОБОГАЩЕНИЕ TRIVY SPLOITSCAN")
     print("ПОЛНАЯ ИНФОРМАЦИЯ ОБ ЭКСПЛОЙТАХ + HTML ОТЧЕТ")
     print("=" * 60)
     
+    print("🧹 Очистка старых логов...")
+    cleanup_logs(scan_dir)
+    print("✅ Очистка логов завершена\n")
+    
     print(f"📁 Ищем отчеты в: {scan_dir}")
-    print(f"📝 Логи SploitScan: {scan_dir / 'logs'} (логи пишутся если CVE не закэширована)")
+    print(f"📝 Новые логи SploitScan: {scan_dir / 'logs'} (отдельный файл для каждого CVE и попытки)")
     
     # Ищем отчеты в указанной папке scan_dir
     trivy_files = list(scan_dir.glob("*.json"))
