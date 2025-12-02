@@ -49,11 +49,18 @@ def collect_statistics_and_group_data(trivy_data):
         'low': 0,
         'unknown': 0,
         'with_exploits': 0,
-        'cisa_kev': 0
+        'cisa_kev': 0,
+        'unique_total': 0,
+        'unique_critical': 0,
+        'unique_high': 0,
+        'unique_medium': 0,
+        'unique_low': 0,
+        'unique_unknown': 0,
+        'unique_exploits': 0
     }
     
     grouped_vulnerabilities = defaultdict(lambda: defaultdict(list))
-    processed_cves = set()  # Для отслеживания уникальных CVE
+    processed_cves = {}  # Для отслеживания уникальных CVE и их атрибутов: {cve_id: {'severity': '', 'has_exploits': bool}}
     
     if 'Results' in trivy_data:
         for result in trivy_data['Results']:
@@ -78,28 +85,49 @@ def collect_statistics_and_group_data(trivy_data):
                 for vuln in vulnerabilities_sorted:
                     if 'VulnerabilityID' in vuln:
                         cve_id = vuln['VulnerabilityID']
+                        severity = vuln.get('Severity', 'UNKNOWN').upper()
+                        has_exploits = has_real_exploits(vuln)
                         
-                        # Учитываем каждое CVE только один раз для статистики
+                        # Общая статистика (все уязвимости, включая дубли)
+                        stats['total_cves'] += 1
+                        
+                        if severity == 'CRITICAL':
+                            stats['critical'] += 1
+                        elif severity == 'HIGH':
+                            stats['high'] += 1
+                        elif severity == 'MEDIUM':
+                            stats['medium'] += 1
+                        elif severity == 'LOW':
+                            stats['low'] += 1
+                        else:
+                            stats['unknown'] += 1
+                        
+                        if has_exploits:
+                            stats['with_exploits'] += 1
+                        
+                        # Уникальная статистика
                         if cve_id not in processed_cves:
-                            processed_cves.add(cve_id)
-                            stats['total_cves'] += 1
+                            processed_cves[cve_id] = {
+                                'severity': severity,
+                                'has_exploits': has_exploits
+                            }
+                            stats['unique_total'] += 1
                             
-                            # Статистика по severity (только для уникальных CVE)
-                            severity = vuln.get('Severity', 'UNKNOWN').upper()
+                            # Уникальная статистика по severity
                             if severity == 'CRITICAL':
-                                stats['critical'] += 1
+                                stats['unique_critical'] += 1
                             elif severity == 'HIGH':
-                                stats['high'] += 1
+                                stats['unique_high'] += 1
                             elif severity == 'MEDIUM':
-                                stats['medium'] += 1
+                                stats['unique_medium'] += 1
                             elif severity == 'LOW':
-                                stats['low'] += 1
+                                stats['unique_low'] += 1
                             else:
-                                stats['unknown'] += 1
+                                stats['unique_unknown'] += 1
                             
-                            # Статистика по эксплойтам (только для уникальных CVE)
-                            if has_real_exploits(vuln):
-                                stats['with_exploits'] += 1
+                            # Уникальная статистика по эксплойтам
+                            if has_exploits:
+                                stats['unique_exploits'] += 1
                             
                             # Статистика по CISA KEV (только для уникальных CVE)
                             if is_cisa_kev(vuln):
@@ -263,7 +291,7 @@ def generate_main_content(stats, grouped_vulnerabilities):
       <!-- Main column -->
       <section>
         <!-- Summary dashboard -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4 mb-6">
           {stats_cards}
         </div>
         
@@ -282,11 +310,86 @@ def generate_main_content(stats, grouped_vulnerabilities):
 
 def generate_stats_cards(stats):
     """Генерирует карточки со статистикой"""
+    total = stats["total_cves"]
+    unique_total = stats["unique_total"]
+    
+    # Рассчитываем проценты для каждого уровня критичности (от общего количества)
+    critical_percent = f"{(stats['critical'] / total * 100):.1f}%" if total > 0 else "0%"
+    high_percent = f"{(stats['high'] / total * 100):.1f}%" if total > 0 else "0%"
+    medium_percent = f"{(stats['medium'] / total * 100):.1f}%" if total > 0 else "0%"
+    low_percent = f"{(stats['low'] / total * 100):.1f}%" if total > 0 else "0%"
+    unknown_percent = f"{(stats['unknown'] / total * 100):.1f}%" if total > 0 else "0%"
+    exploits_percent = f"{(stats['with_exploits'] / total * 100):.1f}%" if total > 0 else "0%"
+    
     cards = [
-        f'<div class="card"><div class="card-body"><div class="muted text-xs">Total CVEs</div><div class="mt-2 text-2xl font-semibold">{stats["total_cves"]}</div></div></div>',
-        f'<div class="card"><div class="card-body"><div class="muted text-xs">Critical</div><div class="mt-2 text-2xl font-semibold text-red-600">{stats["critical"]}</div></div></div>',
-        f'<div class="card"><div class="card-body"><div class="muted text-xs">High</div><div class="mt-2 text-2xl font-semibold text-orange-600">{stats["high"]}</div></div></div>',
-        f'<div class="card"><div class="card-body"><div class="muted text-xs">With Exploits</div><div class="mt-2 text-2xl font-semibold text-purple-600">{stats["with_exploits"]}</div></div></div>'
+        # Total CVEs card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">Total CVEs</div>
+                <div class="mt-2 text-2xl font-semibold">{total}</div>
+                <div class="text-xs muted mt-1">Unique: {unique_total}</div>
+            </div>
+        </div>''',
+        
+        # Critical card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">Critical</div>
+                <div class="mt-2 text-2xl font-semibold text-red-600">{stats["critical"]}</div>
+                <div class="text-xs muted mt-1">{critical_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_critical"]}</div>
+            </div>
+        </div>''',
+        
+        # High card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">High</div>
+                <div class="mt-2 text-2xl font-semibold text-orange-600">{stats["high"]}</div>
+                <div class="text-xs muted mt-1">{high_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_high"]}</div>
+            </div>
+        </div>''',
+        
+        # Medium card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">Medium</div>
+                <div class="mt-2 text-2xl font-semibold text-yellow-600">{stats["medium"]}</div>
+                <div class="text-xs muted mt-1">{medium_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_medium"]}</div>
+            </div>
+        </div>''',
+        
+        # Low card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">Low</div>
+                <div class="mt-2 text-2xl font-semibold text-green-600">{stats["low"]}</div>
+                <div class="text-xs muted mt-1">{low_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_low"]}</div>
+            </div>
+        </div>''',
+        
+        # Unknown card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">Unknown</div>
+                <div class="mt-2 text-2xl font-semibold text-gray-600">{stats["unknown"]}</div>
+                <div class="text-xs muted mt-1">{unknown_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_unknown"]}</div>
+            </div>
+        </div>''',
+        
+        # Exploits card
+        f'''<div class="card">
+            <div class="card-body text-center">
+                <div class="muted text-xs">With Exploits</div>
+                <div class="mt-2 text-2xl font-semibold text-purple-600">{stats["with_exploits"]}</div>
+                <div class="text-xs muted mt-1">{exploits_percent}</div>
+                <div class="text-xs muted">Unique: {stats["unique_exploits"]}</div>
+            </div>
+        </div>'''
     ]
     return '\n'.join(cards)
 
