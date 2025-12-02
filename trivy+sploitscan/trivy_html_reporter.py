@@ -330,6 +330,7 @@ def generate_sidebar(grouped_vulnerabilities):
               <button data-severity="HIGH" class="severity chip bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-100">High</button>
               <button data-severity="MEDIUM" class="severity chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Medium</button>
               <button data-severity="LOW" class="severity chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Low</button>
+              <button data-severity="UNKNOWN" class="severity chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Unknown</button>
             </div>
           </div>
           
@@ -530,6 +531,7 @@ def generate_vulnerability_card(vuln):
           {f'<span class="badge bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-100">{severity}</span>' if severity == 'HIGH' else ''}
           {f'<span class="badge bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">{severity}</span>' if severity == 'MEDIUM' else ''}
           {f'<span class="badge bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">{severity}</span>' if severity == 'LOW' else ''}
+          {f'<span class="badge bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">{severity}</span>' if severity == 'UNKNOWN' else ''}
           <span class="pill priority-{priority}">{priority}</span>
         </div>
         <div class="text-right text-sm">
