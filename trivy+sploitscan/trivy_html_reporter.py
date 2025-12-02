@@ -266,6 +266,11 @@ def generate_main_content(stats, grouped_vulnerabilities):
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           {stats_cards}
         </div>
+        
+        <!-- Counter for visible cards -->
+        <div id="visibleCounter" class="mb-4 px-3 py-2 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300 rounded-md text-sm font-medium hidden">
+          <span id="visibleCount">0</span> of <span id="totalCount">{stats['total_cves']}</span> vulnerabilities visible
+        </div>
 
         <!-- Vulnerabilities by section -->
         <div class="space-y-6">
@@ -506,7 +511,7 @@ def generate_vulnerability_card(vuln):
         has_exploits = has_real_exploits(vuln)
     
     return f"""
-    <div class="border rounded-lg p-4 hover:shadow-md transition-shadow mb-4" 
+    <div class="vulnerability-card border rounded-lg p-4 hover:shadow-md transition-shadow mb-4" 
          data-cve="{cve_id}" 
          data-package="{pkg_name}" 
          data-prio="{priority}" 

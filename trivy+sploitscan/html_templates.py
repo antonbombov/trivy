@@ -252,13 +252,45 @@ def get_javascript():
       const cisaCheckbox = document.getElementById('filterCISA');
       const exploitCheckbox = document.getElementById('filterExploit');
       const resetBtn = document.getElementById('resetFilters');
+      const visibleCounter = document.getElementById('visibleCounter');
+      const visibleCount = document.getElementById('visibleCount');
+      const totalCount = document.getElementById('totalCount');
 
       if (!input) return;
 
-      const vulnerabilityCards = document.querySelectorAll('[data-cve]');
+      const vulnerabilityCards = document.querySelectorAll('.vulnerability-card');
       let selectedPrios = new Set();
       let selectedSeverities = new Set();
       let selectedStatuses = new Set();
+
+      // Update counter function
+      function updateVisibleCounter() {
+        let visibleCards = 0;
+        vulnerabilityCards.forEach(function(card) {
+          if (card.style.display !== 'none') {
+            visibleCards++;
+          }
+        });
+        
+        visibleCount.textContent = visibleCards;
+        totalCount.textContent = vulnerabilityCards.length;
+        
+        // Show/hide counter based on whether any filters are active
+        const hasActiveFilters = 
+          input.value.trim() !== '' ||
+          (epssInput && epssInput.value !== '') ||
+          (cisaCheckbox && cisaCheckbox.checked) ||
+          (exploitCheckbox && exploitCheckbox.checked) ||
+          selectedPrios.size > 0 ||
+          selectedSeverities.size > 0 ||
+          selectedStatuses.size > 0;
+        
+        if (hasActiveFilters) {
+          visibleCounter.classList.remove('hidden');
+        } else {
+          visibleCounter.classList.add('hidden');
+        }
+      }
 
       // Initialize priority filters
       document.querySelectorAll('.prio').forEach(function(btn) {
@@ -400,6 +432,9 @@ def get_javascript():
 
         // Update package and section visibility
         updatePackageAndSectionVisibility();
+        
+        // Update visible counter
+        updateVisibleCounter();
       }
 
       function updatePackageAndSectionVisibility() {
@@ -409,7 +444,7 @@ def get_javascript():
 
           // Process all packages in section
           section.querySelectorAll('div.mb-6').forEach(function(packageDiv) {
-            const packageCards = packageDiv.querySelectorAll('[data-cve]');
+            const packageCards = packageDiv.querySelectorAll('.vulnerability-card');
             const visiblePackageCards = Array.from(packageCards).filter(function(card) {
               return card.style.display !== 'none';
             });
