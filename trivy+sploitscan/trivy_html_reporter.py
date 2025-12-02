@@ -160,7 +160,9 @@ def is_cisa_kev(vuln):
         return False
         
     cisa_data = sploitscan.get('cisa_kev', {})
-    return cisa_data.get('cisa_status') == 'Listed'
+    cisa_status = cisa_data.get('cisa_status', 'Not Listed')
+    # Расширяем проверку на разные варианты обозначения "да"
+    return cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
 
 def format_epss(epss_score):
     """Форматирует EPSS score в проценты"""
@@ -470,6 +472,7 @@ def generate_vulnerability_card(vuln):
         exploitdb_list = []
         metasploit_modules = []
         has_exploits = False
+        is_cisa_listed = False
     else:
         priority = sploitscan.get('priority', {}).get('Priority', 'Unknown')
         
@@ -481,6 +484,10 @@ def generate_vulnerability_card(vuln):
         cisa_data = sploitscan.get('cisa_kev', {})
         cisa_status = cisa_data.get('cisa_status', 'Not Listed')
         ransomware_use = cisa_data.get('ransomware_use', 'N/A')
+        
+        # Определяем, находится ли CVE в списке CISA KEV
+        # Используем более широкую проверку для разных вариантов значений
+        is_cisa_listed = cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
         
         # Exploit данные
         exploit_data = sploitscan.get('exploit', {})
@@ -505,7 +512,7 @@ def generate_vulnerability_card(vuln):
          data-prio="{priority}" 
          data-severity="{severity}"
          data-epss="{epss_score if epss_score != 'N/A' else '0'}"
-         data-cisa="{str(cisa_status == 'Listed').lower()}" 
+         data-cisa="{str(is_cisa_listed).lower()}" 
          data-expl="{str(has_exploits).lower()}"
          data-status="{status.lower()}">
       
@@ -540,7 +547,7 @@ def generate_vulnerability_card(vuln):
           </div>
           <div>
             <span class="font-medium">CISA KEV:</span> 
-            {f'<span class="badge bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">{cisa_status}</span>' if cisa_status == 'Listed' else f'<span class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{cisa_status}</span>'}
+            {f'<span class="badge bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">{cisa_status}</span>' if is_cisa_listed else f'<span class="badge bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">{cisa_status}</span>'}
           </div>
         </div>
       </div>
@@ -582,7 +589,7 @@ def generate_vulnerability_card(vuln):
               <div><span class="muted">Ransomware Use:</span> {ransomware_use}</div>
             </div>
           </div>
-          ''' if cisa_status == 'Listed' else ''}
+          ''' if is_cisa_listed else ''}
           
           <!-- Exploits -->
           {generate_exploits_section(github_pocs, exploitdb_list, metasploit_modules) if has_exploits else '''
