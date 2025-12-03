@@ -114,5 +114,5 @@ trivy-sploitscan/
 
 
 ## 🔗 Ссылки
-SploitScan - инструмент для сбора информации об эксплойтах (https://github.com/xaitax/SploitScan)
+SploitScan - инструмент для сбора информации об эксплойтах (https://github.com/xaitax/SploitScan)  
 Trivy - сканер уязвимостей контейнеров и приложений (https://github.com/aquasecurity/trivy)
