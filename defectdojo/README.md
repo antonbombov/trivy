@@ -28,7 +28,7 @@
 1. Клонируйте репозиторий:
 ```bash
 git clone <repository-url>
-cd defectdojo_enricher
+cd trivy/defectdojo
 ```
 
 2. Установите зависимости:
