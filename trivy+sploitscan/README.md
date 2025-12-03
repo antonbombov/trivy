@@ -20,7 +20,7 @@ Python 3.7+
 1. Клонируйте репозиторий:
 ```bash
 git clone <repository-url>
-cd trivy-sploitscan
+cd trivy\trivy-sploitscan
 ```
 2. Настройте конфигурацию:
 Проект использует config.json для хранения настроек. Укажите параметры, соответствующие вашей системе:
