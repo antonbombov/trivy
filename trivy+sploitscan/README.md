@@ -11,10 +11,10 @@
 
 
 ## Требования
-Python 3.7+
-[Trivy](https://github.com/aquasecurity/trivy/releases)
-[SploitScan](https://github.com/xaitax/SploitScan)
-
+Python 3.7+  
+[Trivy](https://github.com/aquasecurity/trivy/releases)  
+[SploitScan](https://github.com/xaitax/SploitScan)  
+<sub><sup>***рекомендуется к применению sploitscan v.0.13.0 (v.0.14 при отсутствии эксплойтов включает вместо них информационные ссылки</sub></sup> 
 
 ## Установка
 1. Клонируйте репозиторий:
