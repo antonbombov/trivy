@@ -6,14 +6,14 @@
 
 ### Обогащение комментариями (CVE Enrichment)
 - Парсит JSON отчеты Trivy
-- Находит CVE с публичными эксплойтами
+- Находит Vulnerabilities с публичными эксплойтами
 - Добавляет комментарии к findings в DefectDojo с информацией:
   - CVSS оценки
   - EPSS показатели 
   - Ссылки на эксплойты из GitHub
 
 ### Автоматическое принятие рисков (Risk Acceptance)
-- Фильтрация CVE по политикам качества (Quality Gates)
+- Фильтрация Vulnerabilities по политикам качества (Quality Gates)
 - Массовое принятие рисков для соответствующих findings
 - Гибкая настройка критериев принятия
 
@@ -21,7 +21,8 @@
 
 - Python 3.8+
 - DefectDojo API доступ
-- Отчеты Trivy в JSON формате
+- Отчеты Trivy в JSON формате (для создания Engagement в DefectDojo)
+- Обогащенные отчеты Trivy (полученные в результате работы [скрипта](https://github.com/antonbombov/trivy/tree/main/trivy%2Bsploitscan)) 
 
 ## Установка
 
@@ -31,28 +32,31 @@ git clone <repository-url>
 cd trivy/defectdojo
 ```
 
-2. Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
-
-3. Настройте конфигурацию в config.yaml
-```yaml
-defectdojo:
-  url: "https://your-defectdojo-instance.com/"  # URL вашего DefectDojo
-  api_key: "your_api_key_here"                   # API ключ DefectDojo
-
-settings:
-  severity_levels: ["CRITICAL", "HIGH"]          # Уровни severity для обогащения
-  require_exploits: true                         # Только CVE с эксплойтами
-Политики принятия рисков
-yaml
-risk_accept:
-  Level: ["Medium", "Low"]       # Уровни severity для принятия
-  WithExploits: false            # true=только с эксплойтами, false=только без
-  EPSS: 1                        # Максимальный EPSS процент
-  CisaKev: false                 # Требовать наличие в CISA KEV
-  AllRequired: false             # true=все условия, false=любое условие
+2. Настройте конфигурацию в config.json
+```json
+{
+    "defectdojo": {
+        "url": "",                                                      # URL вашего DefectDojo
+        "api_key": ""                                                   # API ключ DefectDojo
+    },
+    "settings": {
+        "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],       # Уровни severity для обогащения
+        "require_exploits": true                                        # Только CVE с эксплойтами
+    },
+    "risk_accept": {
+        "Level": ["Medium", "Low"],                                     # Уровни severity для принятия
+        "WithExploits": false,                                          # true=только с эксплойтами, false=только без
+        "EPSS": 100,                                                    # Максимальный EPSS процент (принмается CVE со значением меньшим, либо равным указанному)
+        "CisaKev": false,                                               # Подтверждена CISA KEV
+        "AllRequired": true                                             # true=соблюдать все указанные фильтры в risk_accept, false=приняте по логичесому ИЛИ (хотябы одно из условий)
+    },
+    "automation": {
+        "mode": 3,                                                      # 1 для Обогащение комментариями (exploits), 2 для Risk Accept по Quality Gates, 3 для обоих действия. null для ручного ввода в cli
+        "auto_confirm": true,                                           # Не требовать ручного подверждения принятия рисков true/false
+        "product_id": 129,                                              # product ID или null (ручной ввод)
+        "json_path": ""                                                 # путь к файлу c обогащенным отчетом или null (ручной ввод)
+    }
+}
 ```
 
 ## Использование
@@ -67,17 +71,17 @@ python enrich_findings.py
 
 ## Входные данные
 - Product ID - идентификатор продукта в DefectDojo
-- Path to JSON report - путь к отчету Trivy в JSON формате
+- Path to JSON report - путь к обогащенному отчету Trivy в JSON формате
 
 ## Логика работы
 ### Обогащение комментариями
 - Парсинг отчета Trivy
-- Фильтрация CVE по severity и наличию эксплойтов
+- Фильтрация Vulnerabilities по severity и наличию эксплойтов
 - Поиск соответствующих findings в активных Engagement
 - Добавление комментариев с детальной информацией
 
 ### Принятие рисков
-- Парсинг всех CVE из отчета
+- Парсинг всех Vulnerabilities из отчета
 - Фильтрация по Quality Gates критериям
 - Поиск активных findings
 - Массовое принятие рисков с подтверждением
