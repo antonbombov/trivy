@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import requests
 import json
-import yaml
+import os
+import re
+import sys
 from typing import Dict, List, Optional
 import urllib3
 
@@ -9,7 +11,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class DefectDojoEnricher:
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.json"):
         self.load_config(config_path)
         self.session = requests.Session()
         self.session.headers.update({
@@ -19,14 +21,38 @@ class DefectDojoEnricher:
         self.session.verify = False
     
     def load_config(self, config_path: str):
-        """Загрузка конфигурации из YAML файла"""
+        """Загрузка конфигурации из JSON файла"""
         try:
-            with open(config_path, 'r') as f:
-                self.config = yaml.safe_load(f)
+            with open(config_path, 'r', encoding='utf-8') as f:
+                self.config = json.load(f)
         except FileNotFoundError:
             print(f"Ошибка: Файл конфигурации {config_path} не найден")
+            print(f"Создайте файл {config_path} с содержимым:")
+            print('''{
+    "defectdojo": {
+        "url": "https://your-defectdojo-instance.com",
+        "api_key": "your-api-key-here"
+    },
+    "settings": {
+        "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        "require_exploits": true
+    },
+    "risk_accept": {
+        "Level": ["Medium", "Low"],
+        "WithExploits": false,
+        "EPSS": 100,
+        "CisaKev": false,
+        "AllRequired": true
+    },
+    "automation": {
+        "mode": null,
+        "auto_confirm": false,
+        "product_id": null,
+        "json_path": null
+    }
+}''')
             exit(1)
-        except yaml.YAMLError as e:
+        except json.JSONDecodeError as e:
             print(f"Ошибка в формате конфигурационного файла: {e}")
             exit(1)
     
@@ -39,36 +65,58 @@ class DefectDojoEnricher:
             print(f"Ошибка загрузки JSON отчета: {e}")
             return {}
         
-        filtered_cves = {}
+        filtered_vulns = {}
         total_vulnerabilities = 0
         
         results = report_data.get("Results", [])
-        print(f"Найдено Results: {len(results)}")
         
         for result in results:
             vulnerabilities = result.get("Vulnerabilities", [])
             total_vulnerabilities += len(vulnerabilities)
             
             for vulnerability in vulnerabilities:
+                vulnerability_id = vulnerability.get("VulnerabilityID", "UNKNOWN")
                 severity = vulnerability.get("Severity", "").upper()
                 github_pocs = vulnerability.get("sploitscan", {}).get("exploit", {}).get("github", {}).get("pocs", [])
                 
-                cve_id = vulnerability.get("VulnerabilityID", "UNKNOWN")
                 pkg_name = vulnerability.get("PkgName", "unknown")
                 pkg_version = vulnerability.get("InstalledVersion", "unknown")
                 
+                # Определяем тип уязвимости по ID
+                vuln_type = "UNKNOWN"
+                if vulnerability_id.startswith("CVE-"):
+                    vuln_type = "CVE"
+                elif vulnerability_id.startswith("GHSA-"):
+                    vuln_type = "GHSA"
+                elif vulnerability_id.startswith("DSA-") or vulnerability_id.startswith("DLSA-"):
+                    vuln_type = "DSA"
+                elif vulnerability_id.startswith("ELSA-"):
+                    vuln_type = "ELSA"
+                elif vulnerability_id.startswith("RUSTSEC-"):
+                    vuln_type = "RUSTSEC"
+                elif vulnerability_id.startswith("PYSEC-"):
+                    vuln_type = "PYSEC"
+                elif vulnerability_id.startswith("GMS-"):
+                    vuln_type = "GMS"
+                elif "OSV-" in vulnerability_id:
+                    vuln_type = "OSV"
+                elif vulnerability_id.startswith("SNYK-"):
+                    vuln_type = "SNYK"
+                elif vulnerability_id.startswith("UBUNTU-"):
+                    vuln_type = "UBUNTU"
+                elif vulnerability_id.startswith("ALAS-"):
+                    vuln_type = "ALAS"
+                
                 # Для enrichment фильтруем по severity и эксплойтам
-                # Для risk accept берем все CVE
+                # Для risk accept берем все уязвимости
                 if for_risk_accept:
-                    # Для risk accept не фильтруем по severity и эксплойтам
-                    include_cve = True
+                    include_vuln = True
                 else:
-                    # Для enrichment используем стандартные фильтры
                     severity_ok = severity in self.config['settings']['severity_levels']
                     exploits_ok = len(github_pocs) > 0 if self.config['settings']['require_exploits'] else True
-                    include_cve = severity_ok and exploits_ok
+                    include_vuln = severity_ok and exploits_ok
                 
-                if include_cve:
+                if include_vuln:
                     # ПРАВИЛЬНЫЙ ВЫБОР CVSS - как в Trivy
                     cvss_score = "N/A"
                     cvss_sources = vulnerability.get("CVSS", {})
@@ -104,15 +152,16 @@ class DefectDojoEnricher:
                     
                     # Формируем note только для enrichment
                     if not for_risk_accept:
-                        note_text = f"{cve_id} CVSS: {cvss_score} {severity} EPSS: {epss_score:.2f}%\n\nPublic Exploits\nGitHub\n" + "\n".join(github_links)
+                        note_text = f"{vulnerability_id} ({vuln_type}) CVSS: {cvss_score} {severity} EPSS: {epss_score:.2f}%\n\nPublic Exploits\nGitHub\n" + "\n".join(github_links)
                     else:
-                        note_text = ""  # Для risk accept note не нужен
+                        note_text = ""
                     
-                    # УНИКАЛЬНЫЙ КЛЮЧ: CVE + пакет + версия + severity
-                    unique_key = f"{cve_id}|{pkg_name}|{pkg_version}|{severity}"
+                    # УНИКАЛЬНЫЙ КЛЮЧ: ID + пакет + версия + severity
+                    unique_key = f"{vulnerability_id}|{pkg_name}|{pkg_version}|{severity}"
                     
-                    filtered_cves[unique_key] = {
-                        "cve_id": cve_id,
+                    filtered_vulns[unique_key] = {
+                        "vuln_id": vulnerability_id,
+                        "vuln_type": vuln_type,
                         "pkg_name": pkg_name,
                         "pkg_version": pkg_version,
                         "note_text": note_text,
@@ -125,143 +174,192 @@ class DefectDojoEnricher:
                         "github_links_count": len(github_links)
                     }
         
-        print(f"Всего CVE в отчете: {total_vulnerabilities}")
+        print(f"Всего уязвимостей в отчете: {total_vulnerabilities}")
+        
+        # Статистика по типам уязвимостей
+        vuln_types_count = {}
+        for vuln_data in filtered_vulns.values():
+            vuln_type = vuln_data["vuln_type"]
+            vuln_types_count[vuln_type] = vuln_types_count.get(vuln_type, 0) + 1
+        
+        print("Распределение по типам уязвимостей:")
+        for vuln_type, count in vuln_types_count.items():
+            print(f"  {vuln_type}: {count}")
+        
         mode = "risk accept" if for_risk_accept else "enrichment"
-        print(f"Отфильтровано для {mode}: {len(filtered_cves)} CVE")
-        return filtered_cves
+        print(f"Отфильтровано для {mode}: {len(filtered_vulns)} уязвимостей")
+        return filtered_vulns
     
-    def filter_cves_for_risk_accept(self, filtered_cves: Dict[str, Dict]) -> Dict[str, Dict]:
-        """Фильтрация CVE для risk accept по quality gates"""
+    def filter_vulns_for_risk_accept(self, filtered_vulns: Dict[str, Dict]) -> Dict[str, Dict]:
+        """Фильтрация уязвимостей для risk accept по quality gates"""
         if 'risk_accept' not in self.config:
             print("Конфигурация risk_accept не найдена")
             return {}
         
         risk_config = self.config['risk_accept']
         level_criteria = risk_config.get('Level', [])
-        with_exploits = risk_config.get('WithExploits')  # Может быть True, False или None
+        with_exploits = risk_config.get('WithExploits')
         epss_threshold = risk_config.get('EPSS', 100)
         cisa_kev = risk_config.get('CisaKev', False)
         all_required = risk_config.get('AllRequired', False)
         
-        print("=== Фильтрация CVE для Risk Accept ===")
+        print("=== Фильтрация уязвимостей для Risk Accept ===")
         print(f"Критерии: Level={level_criteria}, WithExploits={with_exploits}")
         print(f"EPSS<={epss_threshold}, CisaKev={cisa_kev}, AllRequired={all_required}")
         
         filtered_for_risk = {}
         
-        for unique_key, cve_data in filtered_cves.items():
+        for unique_key, vuln_data in filtered_vulns.items():
             checks = []
             
             # Проверка уровня severity
             if level_criteria:
-                severity_ok = cve_data["severity"] in [l.upper() for l in level_criteria]
+                severity_ok = vuln_data["severity"] in [l.upper() for l in level_criteria]
                 checks.append(("Severity", severity_ok))
             
             # Проверка наличия/отсутствия эксплойтов
-            if with_exploits is not None:  # Если параметр указан
-                exploits_ok = cve_data["has_exploits"] == with_exploits
+            if with_exploits is not None:
+                exploits_ok = vuln_data["has_exploits"] == with_exploits
                 checks.append(("Exploits", exploits_ok))
             
             # Проверка EPSS
             if epss_threshold < 100:
-                epss_ok = cve_data["epss"] <= epss_threshold
+                epss_ok = vuln_data["epss"] <= epss_threshold
                 checks.append(("EPSS", epss_ok))
             
             # Проверка CISA KEV
             if cisa_kev:
-                cisa_ok = cve_data["cisa_kev"]
+                cisa_ok = vuln_data["cisa_kev"]
                 checks.append(("CISA KEV", cisa_ok))
             
             # Применяем логику "все или любое"
             if all_required:
-                # Все условия должны выполняться
                 if checks and all(check[1] for check in checks):
-                    filtered_for_risk[unique_key] = cve_data
+                    filtered_for_risk[unique_key] = vuln_data
             else:
-                # Любое условие должно выполняться
                 if checks and any(check[1] for check in checks):
-                    filtered_for_risk[unique_key] = cve_data
+                    filtered_for_risk[unique_key] = vuln_data
         
-        print(f"Найдено CVE для risk accept: {len(filtered_for_risk)}")
+        print(f"Найдено уязвимостей для risk accept: {len(filtered_for_risk)}")
         return filtered_for_risk
     
-    def find_finding_ids(self, product_id: int, filtered_cves: Dict[str, Dict]) -> Dict[str, List[int]]:
-        """Поиск ID АКТИВНЫХ findings по ТОЧНОМУ CVE ID в АКТИВНЫХ Engagement"""
+    def find_finding_ids(self, product_id: int, filtered_vulns: Dict[str, Dict]) -> Dict[str, List[int]]:
+        """Поиск ID АКТИВНЫХ findings по уязвимостям в АКТИВНЫХ Engagement"""
         findings_map = {}
         
-        # Получаем список уникальных CVE ID для поиска
-        cve_ids = list(set([data["cve_id"] for data in filtered_cves.values()]))
+        # Получаем список уникальных ID уязвимостей для поиска
+        vuln_ids = list(set([data["vuln_id"] for data in filtered_vulns.values()]))
         
-        if not cve_ids:
-            print("❌ Нет CVE ID для поиска findings")
+        if not vuln_ids:
+            print("❌ Нет ID уязвимостей для поиска findings")
             return findings_map
             
-        print(f"Поиск АКТИВНЫХ findings для {len(cve_ids)} уникальных CVE в АКТИВНЫХ Engagement...")
-        print("Используется локальная фильтрация из-за бага в DefectDojo API")
+        print(f"Поиск АКТИВНЫХ findings для {len(vuln_ids)} уникальных уязвимостей в АКТИВНЫХ Engagement...")
         
-        # Получаем ВСЕ findings из активных Engagement
-        url = f"{self.config['defectdojo']['url']}/api/v2/findings/"
-        params = {
-            "test__engagement__product": product_id,
-            "test__engagement__status": "In Progress",
-            "limit": 1000
+        # Ищем АКТИВНЫЕ engagement
+        engagements_url = f"{self.config['defectdojo']['url']}/api/v2/engagements/"
+        engagements_params = {
+            "product": product_id,
+            "status": "In Progress",
+            "limit": 100
         }
         
+        active_engagement_ids = []
         try:
-            response = self.session.get(url, params=params, verify=False)
-            if response.status_code == 200:
-                data = response.json()
-                all_findings = data.get('results', [])
-                print(f"Всего findings в активных Engagement: {len(all_findings)}")
-                
-                # Фильтруем только АКТИВНЫЕ findings
-                active_findings = [f for f in all_findings if f.get('active', False)]
-                print(f"Из них АКТИВНЫХ: {len(active_findings)}")
-                
-                # ПРОСТАЯ ЛОГИКА: для каждого АКТИВНОГО finding ищем подходящую запись в filtered_cves
-                for finding in active_findings:
-                    vuln_ids = finding.get('vulnerability_ids', [])
-                    finding_severity = finding.get('severity', '').upper()
-                    
-                    # Ищем точное соответствие CVE ID в vulnerability_ids
-                    for vuln in vuln_ids:
-                        cve_id = vuln.get('vulnerability_id')
-                        if cve_id in cve_ids:
-                            # Ищем запись в filtered_cves с таким же CVE ID и severity
-                            matching_entries = [
-                                (key, data) for key, data in filtered_cves.items() 
-                                if data["cve_id"] == cve_id and data["severity"] == finding_severity
-                            ]
-                            
-                            if matching_entries:
-                                # Берем первую подходящую запись (уникальную для этого CVE+severity)
-                                unique_key, cve_data = matching_entries[0]
-                                
-                                if unique_key not in findings_map:
-                                    findings_map[unique_key] = []
-                                
-                                findings_map[unique_key].append(finding['id'])
-                                print(f"   НАЙДЕН АКТИВНЫЙ finding {finding['id']} для {cve_id} ({cve_data['pkg_name']} {cve_data['pkg_version']}) - severity: {finding_severity}")
-                            break
-                
-                # Статистика по найденным CVE
-                found_cves = set()
-                for unique_key in findings_map.keys():
-                    cve_id = filtered_cves[unique_key]["cve_id"]
-                    found_cves.add(cve_id)
-                
-                for cve_id in cve_ids:
-                    if cve_id in found_cves:
-                        count = sum(len(findings) for key, findings in findings_map.items() 
-                                  if filtered_cves[key]["cve_id"] == cve_id)
-                        print(f"НАЙДЕНО АКТИВНЫХ findings для {cve_id}: {count} шт")
-                    else:
-                        print(f"НЕ НАЙДЕНО АКТИВНЫХ findings для {cve_id}")
-                        
+            engagements_response = self.session.get(engagements_url, params=engagements_params, verify=False)
+            if engagements_response.status_code == 200:
+                engagements_data = engagements_response.json()
+                active_engagement_ids = [eng['id'] for eng in engagements_data.get('results', [])]
+                print(f"Найдено АКТИВНЫХ Engagement: {len(active_engagement_ids)}")
             else:
-                print(f"Ошибка получения findings: {response.status_code}")
+                print(f"Ошибка получения активных Engagement: {engagements_response.status_code}")
+                return findings_map
         except Exception as e:
-            print(f"Ошибка при поиске findings: {e}")
+            print(f"Ошибка при получении активных Engagement: {e}")
+            return findings_map
+        
+        if not active_engagement_ids:
+            print("❌ Не найдено активных Engagement в продукте")
+            return findings_map
+        
+        # Создаем словарь для быстрого поиска
+        vuln_lookup = {}
+        for key, data in filtered_vulns.items():
+            vuln_id_upper = data["vuln_id"].upper()
+            vuln_lookup[vuln_id_upper] = (key, data)
+        
+        # Ищем АКТИВНЫЕ findings в КАЖДОМ активном engagement
+        for engagement_id in active_engagement_ids:
+            print(f"Поиск findings в Engagement {engagement_id}...")
+            
+            url = f"{self.config['defectdojo']['url']}/api/v2/findings/"
+            params = {
+                "test__engagement": engagement_id,
+                "active": "true",
+                "limit": 1000
+            }
+            
+            try:
+                response = self.session.get(url, params=params, verify=False)
+                if response.status_code == 200:
+                    data = response.json()
+                    findings_in_engagement = data.get('results', [])
+                    
+                    if not findings_in_engagement:
+                        continue
+                    
+                    # Ищем совпадения по уязвимостям
+                    for finding in findings_in_engagement:
+                        finding_id = finding['id']
+                        vuln_ids_in_finding = finding.get('vulnerability_ids', [])
+                        finding_severity = finding.get('severity', '').upper()
+                        
+                        # Проверяем vulnerability_ids
+                        for vuln_obj in vuln_ids_in_finding:
+                            vuln_id_from_finding = vuln_obj.get('vulnerability_id', '')
+                            if not vuln_id_from_finding:
+                                continue
+                            
+                            vuln_id_upper = vuln_id_from_finding.upper()
+                            
+                            # Ищем в нашем словаре
+                            if vuln_id_upper in vuln_lookup:
+                                unique_key, vuln_data = vuln_lookup[vuln_id_upper]
+                                
+                                # Проверяем совпадение severity
+                                if vuln_data["severity"] == finding_severity:
+                                    if unique_key not in findings_map:
+                                        findings_map[unique_key] = []
+                                    
+                                    if finding_id not in findings_map[unique_key]:
+                                        findings_map[unique_key].append(finding_id)
+                                        print(f"    ✓ Найден АКТИВНЫЙ finding {finding_id} для {vuln_id_from_finding}")
+                
+                else:
+                    print(f"  Ошибка получения findings из Engagement {engagement_id}: {response.status_code}")
+            except Exception as e:
+                print(f"  Ошибка при поиске findings в Engagement {engagement_id}: {e}")
+        
+        # Статистика по найденным уязвимостям
+        print(f"\n=== РЕЗУЛЬТАТЫ ПОИСКА ===")
+        
+        found_count = 0
+        for vuln_id in vuln_ids:
+            findings_for_vuln = []
+            for unique_key, finding_ids in findings_map.items():
+                if filtered_vulns[unique_key]["vuln_id"] == vuln_id:
+                    findings_for_vuln.extend(finding_ids)
+            
+            if findings_for_vuln:
+                vuln_type = next((data["vuln_type"] for data in filtered_vulns.values() if data["vuln_id"] == vuln_id), "UNKNOWN")
+                found_count += 1
+                print(f"✅ НАЙДЕНО АКТИВНЫХ findings для {vuln_id} ({vuln_type}): {len(findings_for_vuln)} шт")
+            else:
+                vuln_type = next((data["vuln_type"] for data in filtered_vulns.values() if data["vuln_id"] == vuln_id), "UNKNOWN")
+                print(f"❌ НЕ НАЙДЕНО АКТИВНЫХ findings для {vuln_id} ({vuln_type})")
+        
+        total_findings = sum(len(ids) for ids in findings_map.values())
+        print(f"\nИТОГО: найдено {found_count} из {len(vuln_ids)} уязвимостей, всего {total_findings} findings")
         
         return findings_map
     
@@ -313,93 +411,89 @@ class DefectDojoEnricher:
         print("ПОИСК БУДЕТ ВЫПОЛНЕН ТОЛЬКО В АКТИВНЫХ ENGAGEMENT!")
         
         print("Парсинг JSON отчета для enrichment...")
-        filtered_cves = self.parse_trivy_json_report(json_path, for_risk_accept=False)
+        filtered_vulns = self.parse_trivy_json_report(json_path, for_risk_accept=False)
         
-        if not filtered_cves:
-            print("Не найдено CVE, соответствующих критериям отбора")
+        if not filtered_vulns:
+            print("Не найдено уязвимостей, соответствующих критериям отбора")
             return None, None
         
-        # Статистика
-        unique_cves = set(data["cve_id"] for data in filtered_cves.values())
+        unique_vulns = set(data["vuln_id"] for data in filtered_vulns.values())
         
         print(f"Результаты парсинга для enrichment:")
-        print(f"Найдено {len(filtered_cves)} записей CVE с эксплойтами")
-        print(f"Уникальных CVE ID: {len(unique_cves)}")
+        print(f"Найдено {len(filtered_vulns)} записей уязвимостей с эксплойтами")
+        print(f"Уникальных ID уязвимостей: {len(unique_vulns)}")
         
         print("Поиск findings в АКТИВНЫХ Engagement DefectDojo...")
-        findings_map = self.find_finding_ids(product_id, filtered_cves)
+        findings_map = self.find_finding_ids(product_id, filtered_vulns)
         
         if not findings_map:
             print("Не найдено соответствующих findings в АКТИВНЫХ Engagement")
-            return filtered_cves, None
+            return filtered_vulns, None
         
         print("Добавление комментариев...")
         success_count = 0
         total_processed = 0
         
         for unique_key, finding_ids in findings_map.items():
-            cve_data = filtered_cves[unique_key]
+            vuln_data = filtered_vulns[unique_key]
             for finding_id in finding_ids:
                 total_processed += 1
-                if self.add_note_to_finding(finding_id, cve_data["note_text"]):
+                if self.add_note_to_finding(finding_id, vuln_data["note_text"]):
                     success_count += 1
         
         print("ИТОГОВЫЙ РЕЗУЛЬТАТ обогащения:")
         print(f"Успешно обработано: {success_count}/{total_processed} findings")
         
-        return filtered_cves, findings_map
+        return filtered_vulns, findings_map
     
-    def run_risk_accept(self, product_id: int, json_path: str):
+    def run_risk_accept(self, product_id: int, json_path: str, auto_confirm: bool = False):
         """Запуск автоматического принятия рисков"""
         print("\n=== Risk Accept по Quality Gates ===")
         
-        # Парсим ВСЕ CVE из отчета (без фильтрации по severity)
-        print("Парсинг JSON отчета для risk accept (все CVE)...")
-        all_cves = self.parse_trivy_json_report(json_path, for_risk_accept=True)
+        print("Парсинг JSON отчета для risk accept (все уязвимости)...")
+        all_vulns = self.parse_trivy_json_report(json_path, for_risk_accept=True)
         
-        if not all_cves:
-            print("Не найдено CVE в отчете")
+        if not all_vulns:
+            print("Не найдено уязвимостей в отчете")
             return
         
-        # Фильтруем CVE по quality gates
-        risk_cves = self.filter_cves_for_risk_accept(all_cves)
+        risk_vulns = self.filter_vulns_for_risk_accept(all_vulns)
         
-        if not risk_cves:
-            print("❌ Нет CVE, соответствующих критериям risk accept")
+        if not risk_vulns:
+            print("❌ Нет уязвимостей, соответствующих критериям risk accept")
             return
         
-        # Показываем какие CVE прошли фильтр
-        print("✅ CVE, соответствующие политике risk accept:")
-        for unique_key, cve_data in risk_cves.items():
-            print(f"  - {cve_data['cve_id']} ({cve_data['pkg_name']} {cve_data['pkg_version']}) - severity: {cve_data['severity']}, EPSS: {cve_data['epss']:.2f}%, exploits: {cve_data['has_exploits']}")
+        print("✅ Уязвимости, соответствующие политике risk accept:")
+        for unique_key, vuln_data in risk_vulns.items():
+            print(f"  - {vuln_data['vuln_id']} ({vuln_data['vuln_type']}) ({vuln_data['pkg_name']} {vuln_data['pkg_version']}) - severity: {vuln_data['severity']}, EPSS: {vuln_data['epss']:.2f}%, exploits: {vuln_data['has_exploits']}")
         
-        # Ищем findings для отфильтрованных CVE
         print("Поиск findings для risk accept...")
-        risk_findings_map = self.find_finding_ids(product_id, risk_cves)
+        risk_findings_map = self.find_finding_ids(product_id, risk_vulns)
         
         if not risk_findings_map:
             print("❌ Не найдено findings для risk accept")
             return
         
-        # Собираем все finding IDs для risk accept
         all_finding_ids = []
         for finding_ids in risk_findings_map.values():
             all_finding_ids.extend(finding_ids)
         
         print(f"✅ Найдено findings для risk accept: {len(all_finding_ids)}")
         
-        # Показываем какие findings будут приняты
         print("Findings для risk accept:")
         for unique_key, finding_ids in risk_findings_map.items():
-            cve_data = risk_cves[unique_key]
+            vuln_data = risk_vulns[unique_key]
             for finding_id in finding_ids:
-                print(f"  - Finding {finding_id}: {cve_data['cve_id']} (severity: {cve_data['severity']})")
+                print(f"  - Finding {finding_id}: {vuln_data['vuln_id']} ({vuln_data['vuln_type']}) (severity: {vuln_data['severity']})")
         
-        # Подтверждение пользователя
-        confirm = input(f"Вы уверены, что хотите принять риск для {len(all_finding_ids)} findings? (y/N): ")
-        if confirm.lower() != 'y':
-            print("Risk accept отменен")
-            return
+        # Подтверждение пользователя или автоматическое подтверждение
+        if not auto_confirm:
+            confirm = input(f"Вы уверены, что хотите принять риск для {len(all_finding_ids)} findings? (y/N): ")
+            if confirm.lower() != 'y':
+                print("Risk accept отменен")
+                return
+        else:
+            print(f"Автоматическое подтверждение: принимаем риск для {len(all_finding_ids)} findings")
         
         # Выполняем risk accept
         success_count = self.risk_accept_findings(all_finding_ids, "Auto-accepted by quality gates")
@@ -409,28 +503,61 @@ class DefectDojoEnricher:
     def run(self):
         """Основной метод запуска"""
         print("DefectDojo Automation Tool")
-        print("1 - Обогащение комментариями (exploits)")
-        print("2 - Risk Accept по Quality Gates") 
-        print("3 - Оба действия")
         
-        choice = input("Выберите действие (1/2/3): ").strip()
+        # Получаем настройки автоматизации
+        automation_config = self.config.get('automation', {})
         
-        try:
-            product_id = int(input("Enter Product ID: "))
-        except ValueError:
-            print("Ошибка: Product ID должен быть числом")
+        # Режим работы
+        mode = automation_config.get('mode')
+        if mode is None:
+            print("1 - Обогащение комментариями (exploits)")
+            print("2 - Risk Accept по Quality Gates") 
+            print("3 - Оба действия")
+            choice = input("Выберите действие (1/2/3): ").strip()
+        else:
+            choice = str(mode)
+            print(f"Режим работы из конфига: {mode}")
+        
+        # Product ID
+        product_id = automation_config.get('product_id')
+        if product_id is None:
+            try:
+                product_id = int(input("Enter Product ID: "))
+            except ValueError:
+                print("Ошибка: Product ID должен быть числом")
+                return
+        else:
+            print(f"Product ID из конфига: {product_id}")
+        
+        # Путь к JSON отчету
+        json_path = automation_config.get('json_path')
+        if json_path is None:
+            json_path = input("Path to JSON report: ")
+        else:
+            print(f"Путь к отчету из конфига: {json_path}")
+        
+        # Проверяем существование файла отчета
+        if not os.path.exists(json_path):
+            print(f"Ошибка: Файл отчета не найден: {json_path}")
             return
         
-        json_path = input("Path to JSON report: ")
+        # Автоматическое подтверждение
+        auto_confirm = automation_config.get('auto_confirm', False)
         
+        # Выполняем выбранные действия
         if choice in ['1', '3']:
             self.run_enrichment(product_id, json_path)
         
         if choice in ['2', '3']:
-            self.run_risk_accept(product_id, json_path)
+            self.run_risk_accept(product_id, json_path, auto_confirm)
 
 def main():
-    enricher = DefectDojoEnricher()
+    # Можно передать путь к конфигу как аргумент командной строки
+    config_path = "config.json"
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+    
+    enricher = DefectDojoEnricher(config_path)
     enricher.run()
 
 if __name__ == "__main__":
