@@ -56,7 +56,19 @@ def collect_statistics_and_group_data(trivy_data):
         'unique_medium': 0,
         'unique_low': 0,
         'unique_unknown': 0,
-        'unique_exploits': 0
+        'unique_exploits': 0,
+        # Статистика по эксплойтам по уровням критичности (все уязвимости)
+        'critical_with_exploits': 0,
+        'high_with_exploits': 0,
+        'medium_with_exploits': 0,
+        'low_with_exploits': 0,
+        'unknown_with_exploits': 0,
+        # Статистика по уникальным эксплойтам по уровням критичности
+        'unique_critical_with_exploits': 0,
+        'unique_high_with_exploits': 0,
+        'unique_medium_with_exploits': 0,
+        'unique_low_with_exploits': 0,
+        'unique_unknown_with_exploits': 0
     }
     
     grouped_vulnerabilities = defaultdict(lambda: defaultdict(list))
@@ -93,14 +105,24 @@ def collect_statistics_and_group_data(trivy_data):
                         
                         if severity == 'CRITICAL':
                             stats['critical'] += 1
+                            if has_exploits:
+                                stats['critical_with_exploits'] += 1
                         elif severity == 'HIGH':
                             stats['high'] += 1
+                            if has_exploits:
+                                stats['high_with_exploits'] += 1
                         elif severity == 'MEDIUM':
                             stats['medium'] += 1
+                            if has_exploits:
+                                stats['medium_with_exploits'] += 1
                         elif severity == 'LOW':
                             stats['low'] += 1
+                            if has_exploits:
+                                stats['low_with_exploits'] += 1
                         else:
                             stats['unknown'] += 1
+                            if has_exploits:
+                                stats['unknown_with_exploits'] += 1
                         
                         if has_exploits:
                             stats['with_exploits'] += 1
@@ -116,14 +138,24 @@ def collect_statistics_and_group_data(trivy_data):
                             # Уникальная статистика по severity
                             if severity == 'CRITICAL':
                                 stats['unique_critical'] += 1
+                                if has_exploits:
+                                    stats['unique_critical_with_exploits'] += 1
                             elif severity == 'HIGH':
                                 stats['unique_high'] += 1
+                                if has_exploits:
+                                    stats['unique_high_with_exploits'] += 1
                             elif severity == 'MEDIUM':
                                 stats['unique_medium'] += 1
+                                if has_exploits:
+                                    stats['unique_medium_with_exploits'] += 1
                             elif severity == 'LOW':
                                 stats['unique_low'] += 1
+                                if has_exploits:
+                                    stats['unique_low_with_exploits'] += 1
                             else:
                                 stats['unique_unknown'] += 1
+                                if has_exploits:
+                                    stats['unique_unknown_with_exploits'] += 1
                             
                             # Уникальная статистика по эксплойтам
                             if has_exploits:
@@ -322,7 +354,7 @@ def generate_stats_cards(stats):
     exploits_percent = f"{(stats['with_exploits'] / total * 100):.1f}%" if total > 0 else "0%"
     
     cards = [
-        # Total CVEs card
+        # Total CVEs card (без изменений)
         f'''<div class="card">
             <div class="card-body text-center">
                 <div class="muted text-xs">Total CVEs</div>
@@ -338,6 +370,9 @@ def generate_stats_cards(stats):
                 <div class="mt-2 text-2xl font-semibold text-red-600">{stats["critical"]}</div>
                 <div class="text-xs muted mt-1">{critical_percent}</div>
                 <div class="text-xs muted">Unique: {stats["unique_critical"]}</div>
+                <div class="text-xs text-purple-600 font-medium mt-1 tooltip" data-tip="Exploits (Total / Unique)">
+                    Exp: {stats["critical_with_exploits"]}/{stats["unique_critical_with_exploits"]}
+                </div>
             </div>
         </div>''',
         
@@ -348,6 +383,9 @@ def generate_stats_cards(stats):
                 <div class="mt-2 text-2xl font-semibold text-orange-600">{stats["high"]}</div>
                 <div class="text-xs muted mt-1">{high_percent}</div>
                 <div class="text-xs muted">Unique: {stats["unique_high"]}</div>
+                <div class="text-xs text-purple-600 font-medium mt-1 tooltip" data-tip="Exploits (Total / Unique)">
+                    Exp: {stats["high_with_exploits"]}/{stats["unique_high_with_exploits"]}
+                </div>
             </div>
         </div>''',
         
@@ -358,6 +396,9 @@ def generate_stats_cards(stats):
                 <div class="mt-2 text-2xl font-semibold text-yellow-600">{stats["medium"]}</div>
                 <div class="text-xs muted mt-1">{medium_percent}</div>
                 <div class="text-xs muted">Unique: {stats["unique_medium"]}</div>
+                <div class="text-xs text-purple-600 font-medium mt-1 tooltip" data-tip="Exploits (Total / Unique)">
+                    Exp: {stats["medium_with_exploits"]}/{stats["unique_medium_with_exploits"]}
+                </div>
             </div>
         </div>''',
         
@@ -368,6 +409,9 @@ def generate_stats_cards(stats):
                 <div class="mt-2 text-2xl font-semibold text-green-600">{stats["low"]}</div>
                 <div class="text-xs muted mt-1">{low_percent}</div>
                 <div class="text-xs muted">Unique: {stats["unique_low"]}</div>
+                <div class="text-xs text-purple-600 font-medium mt-1 tooltip" data-tip="Exploits (Total / Unique)">
+                    Exp: {stats["low_with_exploits"]}/{stats["unique_low_with_exploits"]}
+                </div>
             </div>
         </div>''',
         
@@ -378,10 +422,13 @@ def generate_stats_cards(stats):
                 <div class="mt-2 text-2xl font-semibold text-gray-600">{stats["unknown"]}</div>
                 <div class="text-xs muted mt-1">{unknown_percent}</div>
                 <div class="text-xs muted">Unique: {stats["unique_unknown"]}</div>
+                <div class="text-xs text-purple-600 font-medium mt-1 tooltip" data-tip="Exploits (Total / Unique)">
+                    Exp: {stats["unknown_with_exploits"]}/{stats["unique_unknown_with_exploits"]}
+                </div>
             </div>
         </div>''',
         
-        # Exploits card
+        # Exploits card (без изменений)
         f'''<div class="card">
             <div class="card-body text-center">
                 <div class="muted text-xs">With Exploits</div>
@@ -474,9 +521,11 @@ def generate_sidebar(grouped_vulnerabilities):
         <div class="card-header">
           <h2 class="text-sm font-semibold tracking-wide uppercase muted">Sections</h2>
         </div>
-        <div class="card-body">
-          <div class="scroll-area overflow-y-auto space-y-1">
-            {sections_html}
+        <div class="card-body p-0">
+          <div class="overflow-y-auto" style="max-height: calc(100vh - 400px);">
+            <div class="space-y-1 p-4">
+              {sections_html}
+            </div>
           </div>
         </div>
       </div>
