@@ -2,9 +2,8 @@
 import requests
 import json
 import os
-import re
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List
 import urllib3
 
 # Отключаем предупреждения о SSL
@@ -38,11 +37,11 @@ class DefectDojoEnricher:
         "require_exploits": true
     },
     "risk_accept": {
-        "Level": ["Medium", "Low"],
-        "WithExploits": false,
+        "Level": [],
+        "WithExploits": null,
         "EPSS": 100,
         "CisaKev": false,
-        "AllRequired": true
+        "AllRequired": false
     },
     "automation": {
         "mode": null,
@@ -67,6 +66,7 @@ class DefectDojoEnricher:
         
         filtered_vulns = {}
         total_vulnerabilities = 0
+        cisa_kev_count = 0
         
         results = report_data.get("Results", [])
         
@@ -107,6 +107,19 @@ class DefectDojoEnricher:
                 elif vulnerability_id.startswith("ALAS-"):
                     vuln_type = "ALAS"
                 
+                # Проверяем CISA KEV статус (внутри sploitscan)
+                sploitscan_data = vulnerability.get("sploitscan", {})
+                cisa_kev_data = sploitscan_data.get("cisa_kev", {})
+                
+                is_cisa_kev = False
+                if isinstance(cisa_kev_data, dict) and cisa_kev_data:
+                    cisa_status = cisa_kev_data.get("cisa_status")
+                    if cisa_status:
+                        is_cisa_kev = str(cisa_status).strip().upper() == "YES"
+                
+                if is_cisa_kev:
+                    cisa_kev_count += 1
+                
                 # Для enrichment фильтруем по severity и эксплойтам
                 # Для risk accept берем все уязвимости
                 if for_risk_accept:
@@ -138,7 +151,6 @@ class DefectDojoEnricher:
                     
                     # Безопасная логика EPSS
                     epss_score = 0.0
-                    sploitscan_data = vulnerability.get("sploitscan", {})
                     if sploitscan_data:
                         epss_data_list = sploitscan_data.get("epss", {}).get("data", [])
                         if epss_data_list:
@@ -168,13 +180,14 @@ class DefectDojoEnricher:
                         "severity": severity,
                         "cvss": cvss_score,
                         "epss": epss_score,
-                        "cisa_kev": vulnerability.get("cisa_kev", False),
+                        "cisa_kev": is_cisa_kev,
                         "has_exploits": len(github_links) > 0,
                         "github_links": github_links,
                         "github_links_count": len(github_links)
                     }
         
         print(f"Всего уязвимостей в отчете: {total_vulnerabilities}")
+        print(f"CISA KEV уязвимостей в отчете: {cisa_kev_count}")
         
         # Статистика по типам уязвимостей
         vuln_types_count = {}
@@ -197,47 +210,56 @@ class DefectDojoEnricher:
             return {}
         
         risk_config = self.config['risk_accept']
-        level_criteria = risk_config.get('Level', [])
+        
+        # Берем значения из конфига БЕЗ значений по умолчанию
+        level_criteria = [l.upper() for l in risk_config.get('Level', [])]
         with_exploits = risk_config.get('WithExploits')
-        epss_threshold = risk_config.get('EPSS', 100)
-        cisa_kev = risk_config.get('CisaKev', False)
-        all_required = risk_config.get('AllRequired', False)
+        epss_threshold = risk_config.get('EPSS')
+        cisa_kev = risk_config.get('CisaKev')
+        all_required = risk_config.get('AllRequired')
         
         print("=== Фильтрация уязвимостей для Risk Accept ===")
-        print(f"Критерии: Level={level_criteria}, WithExploits={with_exploits}")
-        print(f"EPSS<={epss_threshold}, CisaKev={cisa_kev}, AllRequired={all_required}")
+        print(f"Критерии: Level={level_criteria}")
+        print(f"WithExploits={with_exploits}, EPSS={epss_threshold}")
+        print(f"CisaKev={cisa_kev}, AllRequired={all_required}")
         
         filtered_for_risk = {}
         
         for unique_key, vuln_data in filtered_vulns.items():
             checks = []
             
-            # Проверка уровня severity
+            # Проверка уровня severity (только если указаны уровни)
             if level_criteria:
-                severity_ok = vuln_data["severity"] in [l.upper() for l in level_criteria]
+                severity_ok = vuln_data["severity"] in level_criteria
                 checks.append(("Severity", severity_ok))
             
-            # Проверка наличия/отсутствия эксплойтов
+            # Проверка наличия/отсутствия эксплойтов (только если указано)
             if with_exploits is not None:
                 exploits_ok = vuln_data["has_exploits"] == with_exploits
                 checks.append(("Exploits", exploits_ok))
             
-            # Проверка EPSS
-            if epss_threshold < 100:
+            # Проверка EPSS (только если указан порог)
+            if epss_threshold is not None:
                 epss_ok = vuln_data["epss"] <= epss_threshold
                 checks.append(("EPSS", epss_ok))
             
-            # Проверка CISA KEV
-            if cisa_kev:
-                cisa_ok = vuln_data["cisa_kev"]
+            # Проверка CISA KEV (только если указано)
+            if cisa_kev is not None:
+                cisa_ok = vuln_data["cisa_kev"] == cisa_kev
                 checks.append(("CISA KEV", cisa_ok))
+            
+            # Если нет ни одного критерия - пропускаем
+            if not checks:
+                continue
             
             # Применяем логику "все или любое"
             if all_required:
-                if checks and all(check[1] for check in checks):
+                # Все указанные условия должны выполняться
+                if all(check[1] for check in checks):
                     filtered_for_risk[unique_key] = vuln_data
             else:
-                if checks and any(check[1] for check in checks):
+                # Любое указанное условие должно выполняться
+                if any(check[1] for check in checks):
                     filtered_for_risk[unique_key] = vuln_data
         
         print(f"Найдено уязвимостей для risk accept: {len(filtered_for_risk)}")
@@ -312,7 +334,6 @@ class DefectDojoEnricher:
                     for finding in findings_in_engagement:
                         finding_id = finding['id']
                         vuln_ids_in_finding = finding.get('vulnerability_ids', [])
-                        finding_severity = finding.get('severity', '').upper()
                         
                         # Проверяем vulnerability_ids
                         for vuln_obj in vuln_ids_in_finding:
@@ -326,14 +347,13 @@ class DefectDojoEnricher:
                             if vuln_id_upper in vuln_lookup:
                                 unique_key, vuln_data = vuln_lookup[vuln_id_upper]
                                 
-                                # Проверяем совпадение severity
-                                if vuln_data["severity"] == finding_severity:
-                                    if unique_key not in findings_map:
-                                        findings_map[unique_key] = []
-                                    
-                                    if finding_id not in findings_map[unique_key]:
-                                        findings_map[unique_key].append(finding_id)
-                                        print(f"    ✓ Найден АКТИВНЫЙ finding {finding_id} для {vuln_id_from_finding}")
+                                # НЕ ПРОВЕРЯЕМ SEVERITY! Просто добавляем finding
+                                if unique_key not in findings_map:
+                                    findings_map[unique_key] = []
+                                
+                                if finding_id not in findings_map[unique_key]:
+                                    findings_map[unique_key].append(finding_id)
+                                    print(f"    ✓ Найден АКТИВНЫЙ finding {finding_id} для {vuln_id_from_finding}")
                 
                 else:
                     print(f"  Ошибка получения findings из Engagement {engagement_id}: {response.status_code}")
