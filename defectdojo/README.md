@@ -43,9 +43,9 @@ cd trivy/defectdojo
         "severity_levels": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],       # Уровни severity для обогащения
         "require_exploits": true                                        # Только CVE с эксплойтами
     },
-    "risk_accept": {
-        "Level": ["Medium", "Low"],                                     # Уровни severity для принятия
-        "WithExploits": false,                                          # true=только с эксплойтами, false=только без
+    "risk_accept": {                                                    # используй null для пропуска проверки!
+        "Level": ["Medium", "Low"],                                     # Уровни severity для принятия (можнго указать [] для severity любого уровня)
+        "WithExploits": false,                                          # true=только с эксплойтами, false=только без эксплойтов
         "EPSS": 100,                                                    # Максимальный EPSS процент (принмается CVE со значением меньшим, либо равным указанному)
         "CisaKev": false,                                               # Подтверждена CISA KEV
         "AllRequired": true                                             # true=соблюдать все указанные фильтры в risk_accept, false=приняте по логичесому ИЛИ (хотябы одно из условий)
