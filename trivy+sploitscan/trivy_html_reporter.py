@@ -451,79 +451,79 @@ def generate_sidebar(grouped_vulnerabilities):
     
     return f"""
     <div class="sticky sticky-sidebar">
-      <!-- Filters -->
-      <div class="card mb-4">
-        <div class="card-header">
-          <h2 class="text-sm font-semibold tracking-wide uppercase muted">Filters</h2>
+      <div class="overflow-y-auto scrollbar-hide" style="max-height: calc(100vh - 120px);">
+        <!-- Filters -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h2 class="text-sm font-semibold tracking-wide uppercase muted">Filters</h2>
+          </div>
+          <div class="card-body space-y-3">
+            <div>
+              <label class="block text-xs font-medium muted mb-1">Quick search (CVE ID or Package)</label>
+              <input id="searchInput" type="text" placeholder="Search CVE or package…" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
+            </div>
+            
+            <div>
+              <label class="block text-xs font-medium muted mb-1">Priority</label>
+              <div class="flex flex-wrap gap-2">
+                <button data-prio="A+" class="prio chip priority-A+">A+</button>
+                <button data-prio="A" class="prio chip priority-A">A</button>
+                <button data-prio="B" class="prio chip priority-B">B</button>
+                <button data-prio="C" class="prio chip priority-C">C</button>
+                <button data-prio="D" class="prio chip priority-D">D</button>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-xs font-medium muted mb-1">Severity</label>
+              <div class="flex flex-wrap gap-2">
+                <button data-severity="CRITICAL" class="severity chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Critical</button>
+                <button data-severity="HIGH" class="severity chip bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-100">High</button>
+                <button data-severity="MEDIUM" class="severity chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Medium</button>
+                <button data-severity="LOW" class="severity chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Low</button>
+                <button data-severity="UNKNOWN" class="severity chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Unknown</button>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-xs font-medium muted mb-1">EPSS ≥ %</label>
+              <input id="filterEPSS" type="number" min="0" max="100" step="0.01" placeholder="0.00%" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
+            </div>
+            
+            <!-- ДОБАВЛЕНО: Status filter -->
+            <div>
+              <label class="block text-xs font-medium muted mb-1">Status</label>
+              <div class="flex flex-wrap gap-2">
+                <button data-status="fixed" class="status chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Fixed</button>
+                <button data-status="affected" class="status chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Affected</button>
+                <button data-status="will_not_fix" class="status chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Will not fix</button>
+                <button data-status="unknown" class="status chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Unknown</button>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <input id="filterCISA" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
+              <label for="filterCISA" class="text-sm">CISA KEV only</label>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <input id="filterExploit" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
+              <label for="filterExploit" class="text-sm">Has public exploits</label>
+            </div>
+            
+            <div class="pt-2">
+              <button id="resetFilters" class="w-full text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Reset filters</button>
+            </div>
+          </div>
         </div>
-        <div class="card-body space-y-3">
-          <div>
-            <label class="block text-xs font-medium muted mb-1">Quick search (CVE ID or Package)</label>
-            <input id="searchInput" type="text" placeholder="Search CVE or package…" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
-          </div>
-          
-          <div>
-            <label class="block text-xs font-medium muted mb-1">Priority</label>
-            <div class="flex flex-wrap gap-2">
-              <button data-prio="A+" class="prio chip priority-A+">A+</button>
-              <button data-prio="A" class="prio chip priority-A">A</button>
-              <button data-prio="B" class="prio chip priority-B">B</button>
-              <button data-prio="C" class="prio chip priority-C">C</button>
-              <button data-prio="D" class="prio chip priority-D">D</button>
-            </div>
-          </div>
-          
-          <div>
-            <label class="block text-xs font-medium muted mb-1">Severity</label>
-            <div class="flex flex-wrap gap-2">
-              <button data-severity="CRITICAL" class="severity chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Critical</button>
-              <button data-severity="HIGH" class="severity chip bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-100">High</button>
-              <button data-severity="MEDIUM" class="severity chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Medium</button>
-              <button data-severity="LOW" class="severity chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Low</button>
-              <button data-severity="UNKNOWN" class="severity chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Unknown</button>
-            </div>
-          </div>
-          
-          <div>
-            <label class="block text-xs font-medium muted mb-1">EPSS ≥ %</label>
-            <input id="filterEPSS" type="number" min="0" max="100" step="0.01" placeholder="0.00%" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
-          </div>
-          
-          <!-- ДОБАВЛЕНО: Status filter -->
-          <div>
-            <label class="block text-xs font-medium muted mb-1">Status</label>
-            <div class="flex flex-wrap gap-2">
-              <button data-status="fixed" class="status chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Fixed</button>
-              <button data-status="affected" class="status chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Affected</button>
-              <button data-status="will_not_fix" class="status chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Will not fix</button>
-              <button data-status="unknown" class="status chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Unknown</button>
-            </div>
-          </div>
-          
-          <div class="flex items-center gap-2">
-            <input id="filterCISA" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
-            <label for="filterCISA" class="text-sm">CISA KEV only</label>
-          </div>
-          
-          <div class="flex items-center gap-2">
-            <input id="filterExploit" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
-            <label for="filterExploit" class="text-sm">Has public exploits</label>
-          </div>
-          
-          <div class="pt-2">
-            <button id="resetFilters" class="w-full text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Reset filters</button>
-          </div>
-        </div>
-      </div>
 
-      <!-- Sections Navigation -->
-      <div class="card">
-        <div class="card-header">
-          <h2 class="text-sm font-semibold tracking-wide uppercase muted">Sections</h2>
-        </div>
-        <div class="card-body p-0">
-          <div class="overflow-y-auto" style="max-height: calc(100vh - 400px);">
-            <div class="space-y-1 p-4">
+        <!-- Sections Navigation -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="text-sm font-semibold tracking-wide uppercase muted">Sections</h2>
+          </div>
+          <div class="card-body">
+            <div class="space-y-1">
               {sections_html}
             </div>
           </div>

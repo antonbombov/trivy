@@ -220,30 +220,15 @@ def get_css_styles():
     ul { word-break: break-word; }
     li > a { word-break: break-all; }
 
-    /* Custom scrollbar for sections navigation */
-    .overflow-y-auto {
-      scrollbar-width: thin;
-      scrollbar-color: #d1d5db #f3f4f6;
+    /* Hide scrollbar for sidebar COMPLETELY - no hover effect */
+    .scrollbar-hide {
+      -ms-overflow-style: none;  /* IE and Edge */
+      scrollbar-width: none;     /* Firefox */
     }
-    .overflow-y-auto::-webkit-scrollbar {
-      width: 6px;
-    }
-    .overflow-y-auto::-webkit-scrollbar-track {
-      background: #f3f4f6;
-      border-radius: 3px;
-    }
-    .overflow-y-auto::-webkit-scrollbar-thumb {
-      background-color: #d1d5db;
-      border-radius: 3px;
-    }
-    .dark .overflow-y-auto {
-      scrollbar-color: #4b5563 #374151;
-    }
-    .dark .overflow-y-auto::-webkit-scrollbar-track {
-      background: #374151;
-    }
-    .dark .overflow-y-auto::-webkit-scrollbar-thumb {
-      background-color: #4b5563;
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;  /* Chrome, Safari and Opera */
+      width: 0;
+      height: 0;
     }
     """
 
