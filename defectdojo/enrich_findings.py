@@ -3,7 +3,7 @@ import requests
 import json
 import os
 import sys
-from typing import Dict, List
+from typing import Dict, List, Any
 import urllib3
 
 # Отключаем предупреждения о SSL
@@ -55,8 +55,166 @@ class DefectDojoEnricher:
             print(f"Ошибка в формате конфигурационного файла: {e}")
             exit(1)
     
+    def _extract_exploits_from_sploitscan(self, sploitscan_data: Dict[str, Any]) -> Dict[str, List[str]]:
+        """
+        Извлекает ссылки на эксплойты из всех источников в sploitscan
+        
+        Возвращает:
+            {
+                "github": ["https://github.com/..."],
+                "exploitdb": ["https://www.exploit-db.com/..."],
+                "nvd": ["https://github.com/..."],
+                "metasploit": ["https://github.com/rapid7/..."],
+                "vulncheck": [...],
+                "packetstorm": [...],
+                "hackerone": [...]
+            }
+        """
+        exploits_by_source = {
+            "github": [],
+            "exploitdb": [],
+            "nvd": [],
+            "metasploit": [],
+            "vulncheck": [],
+            "packetstorm": [],
+            "hackerone": []
+        }
+        
+        if not sploitscan_data:
+            return exploits_by_source
+        
+        # 1. GitHub Data
+        github_data = sploitscan_data.get("GitHub Data", {})
+        if isinstance(github_data, dict):
+            github_pocs = github_data.get("pocs", [])
+            if isinstance(github_pocs, list):
+                for poc in github_pocs:
+                    if isinstance(poc, dict):
+                        html_url = poc.get("html_url")
+                        if html_url and isinstance(html_url, str):
+                            exploits_by_source["github"].append(html_url)
+        
+        # 2. ExploitDB Data
+        exploitdb_data = sploitscan_data.get("ExploitDB Data", [])
+        if isinstance(exploitdb_data, list):
+            for exploit in exploitdb_data:
+                if isinstance(exploit, dict):
+                    # Вариант 1: прямой URL
+                    exploit_url = exploit.get("url")
+                    if exploit_url and isinstance(exploit_url, str):
+                        exploits_by_source["exploitdb"].append(exploit_url)
+                    # Вариант 2: формирование URL из ID
+                    elif "id" in exploit:
+                        exploit_id = str(exploit["id"]).strip()
+                        if exploit_id:
+                            exploits_by_source["exploitdb"].append(f"https://www.exploit-db.com/exploits/{exploit_id}")
+        
+        # 3. NVD Data
+        nvd_data = sploitscan_data.get("NVD Data", {})
+        if isinstance(nvd_data, dict):
+            nvd_exploits = nvd_data.get("exploits", [])
+            if isinstance(nvd_exploits, list):
+                for exploit_url in nvd_exploits:
+                    if exploit_url and isinstance(exploit_url, str):
+                        exploits_by_source["nvd"].append(exploit_url)
+        
+        # 4. Metasploit Data
+        metasploit_data = sploitscan_data.get("Metasploit Data", {})
+        if isinstance(metasploit_data, dict):
+            metasploit_modules = metasploit_data.get("modules", [])
+            if isinstance(metasploit_modules, list):
+                for module in metasploit_modules:
+                    if isinstance(module, dict):
+                        module_url = module.get("url")
+                        if module_url and isinstance(module_url, str):
+                            exploits_by_source["metasploit"].append(module_url)
+        
+        # 5. VulnCheck Data (структура может быть разной, собираем все URL)
+        vulncheck_data = sploitscan_data.get("VulnCheck Data", {})
+        if isinstance(vulncheck_data, dict):
+            # Рекурсивно ищем URL в VulnCheck данных
+            self._find_urls_in_dict(vulncheck_data, exploits_by_source["vulncheck"])
+        
+        # 6. PacketStorm Data
+        packetstorm_data = sploitscan_data.get("PacketStorm Data", {})
+        if isinstance(packetstorm_data, dict):
+            self._find_urls_in_dict(packetstorm_data, exploits_by_source["packetstorm"])
+        
+        # 7. HackerOne Data
+        hackerone_data = sploitscan_data.get("HackerOne Data", {})
+        if isinstance(hackerone_data, dict):
+            self._find_urls_in_dict(hackerone_data, exploits_by_source["hackerone"])
+        
+        return exploits_by_source
+    
+    def _find_urls_in_dict(self, data: Dict, url_list: List[str]):
+        """Рекурсивно ищет URL в словаре"""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, str) and value.startswith(('http://', 'https://')):
+                    url_list.append(value)
+                elif isinstance(value, (dict, list)):
+                    self._find_urls_in_dict(value, url_list)
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    self._find_urls_in_dict(item, url_list)
+    
+    def _get_all_exploit_urls(self, exploits_by_source: Dict[str, List[str]]) -> List[str]:
+        """Получает все уникальные URL эксплойтов из всех источников"""
+        all_urls = []
+        seen_urls = set()
+        
+        for source, urls in exploits_by_source.items():
+            for url in urls:
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    all_urls.append(url)
+        
+        return all_urls
+    
+    def _format_exploits_for_note(self, exploits_by_source: Dict[str, List[str]]) -> str:
+        """Форматирует информацию об эксплойтах для комментария"""
+        note_lines = ["Public Exploits"]
+        
+        for source, urls in exploits_by_source.items():
+            if urls:
+                source_name = source.upper()
+                note_lines.append(f"\n{source_name}")
+                for url in urls[:10]:  # Ограничиваем количество ссылок
+                    note_lines.append(f"  {url}")
+                if len(urls) > 10:
+                    note_lines.append(f"  ... и еще {len(urls) - 10} ссылок")
+        
+        return "\n".join(note_lines)
+    
+    def _check_cisa_kev_status(self, sploitscan_data: Dict[str, Any]) -> bool:
+        """
+        Проверяет CISA KEV статус из данных sploitscan
+        
+        Новая структура: "CISA Data" вместо "CISA KEV"
+        """
+        is_cisa_kev = False
+        
+        # Пробуем оба варианта для обратной совместимости
+        cisa_data = sploitscan_data.get("CISA Data", sploitscan_data.get("cisa_kev", {}))
+        
+        if isinstance(cisa_data, dict):
+            # Вариант 1: ключ cisa_status
+            cisa_status = cisa_data.get("cisa_status")
+            if cisa_status:
+                is_cisa_kev = str(cisa_status).strip().upper() == "YES"
+            
+            # Вариант 2: ключ kev (для обратной совместимости)
+            if not is_cisa_kev and "kev" in cisa_data:
+                kev_value = cisa_data.get("kev")
+                if kev_value:
+                    is_cisa_kev = str(kev_value).strip().upper() in ["YES", "TRUE", "1"]
+        
+        return is_cisa_kev
+    
     def parse_trivy_json_report(self, file_path: str, for_risk_accept: bool = False) -> Dict[str, Dict]:
-        """Парсинг JSON отчета Trivy"""
+        """Парсинг JSON отчета Trivy с новой структурой sploitscan"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 report_data = json.load(f)
@@ -77,7 +235,21 @@ class DefectDojoEnricher:
             for vulnerability in vulnerabilities:
                 vulnerability_id = vulnerability.get("VulnerabilityID", "UNKNOWN")
                 severity = vulnerability.get("Severity", "").upper()
-                github_pocs = vulnerability.get("sploitscan", {}).get("exploit", {}).get("github", {}).get("pocs", [])
+                
+                # Получаем данные sploitscan с новой структурой
+                sploitscan_data_raw = vulnerability.get("sploitscan")
+                
+                # ОБРАБОТКА: Если sploitscan_data - список, берем первый элемент
+                sploitscan_data = {}
+                if isinstance(sploitscan_data_raw, list) and sploitscan_data_raw:
+                    sploitscan_data = sploitscan_data_raw[0] if isinstance(sploitscan_data_raw[0], dict) else {}
+                elif isinstance(sploitscan_data_raw, dict):
+                    sploitscan_data = sploitscan_data_raw
+                
+                # Извлекаем эксплойты из всех источников
+                exploits_by_source = self._extract_exploits_from_sploitscan(sploitscan_data)
+                all_exploit_urls = self._get_all_exploit_urls(exploits_by_source)
+                has_exploits = len(all_exploit_urls) > 0
                 
                 pkg_name = vulnerability.get("PkgName", "unknown")
                 pkg_version = vulnerability.get("InstalledVersion", "unknown")
@@ -107,15 +279,14 @@ class DefectDojoEnricher:
                 elif vulnerability_id.startswith("ALAS-"):
                     vuln_type = "ALAS"
                 
-                # Проверяем CISA KEV статус (внутри sploitscan)
-                sploitscan_data = vulnerability.get("sploitscan", {})
-                cisa_kev_data = sploitscan_data.get("cisa_kev", {})
-                
+                # Проверяем CISA KEV статус (новая структура: "CISA Data")
                 is_cisa_kev = False
-                if isinstance(cisa_kev_data, dict) and cisa_kev_data:
-                    cisa_status = cisa_kev_data.get("cisa_status")
-                    if cisa_status:
-                        is_cisa_kev = str(cisa_status).strip().upper() == "YES"
+                if isinstance(sploitscan_data, dict):
+                    cisa_data = sploitscan_data.get("CISA Data", sploitscan_data.get("cisa_kev", {}))
+                    if isinstance(cisa_data, dict):
+                        cisa_status = cisa_data.get("cisa_status")
+                        if cisa_status:
+                            is_cisa_kev = str(cisa_status).strip().upper() == "YES"
                 
                 if is_cisa_kev:
                     cisa_kev_count += 1
@@ -126,7 +297,7 @@ class DefectDojoEnricher:
                     include_vuln = True
                 else:
                     severity_ok = severity in self.config['settings']['severity_levels']
-                    exploits_ok = len(github_pocs) > 0 if self.config['settings']['require_exploits'] else True
+                    exploits_ok = has_exploits if self.config['settings']['require_exploits'] else True
                     include_vuln = severity_ok and exploits_ok
                 
                 if include_vuln:
@@ -149,22 +320,30 @@ class DefectDojoEnricher:
                                 cvss_score = score
                                 break
                     
-                    # Безопасная логика EPSS
+                    # Получаем EPSS данные (новая структура)
                     epss_score = 0.0
-                    if sploitscan_data:
-                        epss_data_list = sploitscan_data.get("epss", {}).get("data", [])
-                        if epss_data_list:
-                            epss_str = epss_data_list[0].get("epss", "0")
-                            try:
-                                epss_score = float(epss_str) * 100
-                            except (ValueError, TypeError):
-                                epss_score = 0.0
+                    epss_data = sploitscan_data.get("EPSS", {})
+                    if isinstance(epss_data, dict):
+                        epss_data_list = epss_data.get("data", [])
+                        if isinstance(epss_data_list, list) and epss_data_list:
+                            epss_item = epss_data_list[0]
+                            if isinstance(epss_item, dict):
+                                epss_str = epss_item.get("epss", "0")
+                                try:
+                                    epss_score = float(epss_str) * 100
+                                except (ValueError, TypeError):
+                                    epss_score = 0.0
                     
-                    github_links = [poc.get("html_url") for poc in github_pocs if poc.get("html_url")]
+                    # Форматируем информацию об эксплойтах для комментария
+                    exploits_text = ""
+                    if not for_risk_accept:
+                        exploits_text = self._format_exploits_for_note(exploits_by_source)
                     
                     # Формируем note только для enrichment
                     if not for_risk_accept:
-                        note_text = f"{vulnerability_id} ({vuln_type}) CVSS: {cvss_score} {severity} EPSS: {epss_score:.2f}%\n\nPublic Exploits\nGitHub\n" + "\n".join(github_links)
+                        note_text = f"{vulnerability_id} ({vuln_type}) CVSS: {cvss_score} {severity} EPSS: {epss_score:.2f}%"
+                        if exploits_text:
+                            note_text += f"\n\n{exploits_text}"
                     else:
                         note_text = ""
                     
@@ -181,9 +360,10 @@ class DefectDojoEnricher:
                         "cvss": cvss_score,
                         "epss": epss_score,
                         "cisa_kev": is_cisa_kev,
-                        "has_exploits": len(github_links) > 0,
-                        "github_links": github_links,
-                        "github_links_count": len(github_links)
+                        "has_exploits": has_exploits,
+                        "all_exploit_urls": all_exploit_urls,
+                        "exploits_by_source": exploits_by_source,
+                        "exploit_sources_count": sum(len(urls) for urls in exploits_by_source.values())
                     }
         
         print(f"Всего уязвимостей в отчете: {total_vulnerabilities}")
@@ -198,6 +378,19 @@ class DefectDojoEnricher:
         print("Распределение по типам уязвимостей:")
         for vuln_type, count in vuln_types_count.items():
             print(f"  {vuln_type}: {count}")
+        
+        # Статистика по источникам эксплойтов
+        if not for_risk_accept:
+            source_stats = {}
+            for vuln_data in filtered_vulns.values():
+                for source, urls in vuln_data["exploits_by_source"].items():
+                    if urls:
+                        source_stats[source] = source_stats.get(source, 0) + 1
+            
+            if source_stats:
+                print("Уязвимости с эксплойтами по источникам:")
+                for source, count in sorted(source_stats.items()):
+                    print(f"  {source}: {count}")
         
         mode = "risk accept" if for_risk_accept else "enrichment"
         print(f"Отфильтровано для {mode}: {len(filtered_vulns)} уязвимостей")
@@ -485,7 +678,11 @@ class DefectDojoEnricher:
         
         print("✅ Уязвимости, соответствующие политике risk accept:")
         for unique_key, vuln_data in risk_vulns.items():
-            print(f"  - {vuln_data['vuln_id']} ({vuln_data['vuln_type']}) ({vuln_data['pkg_name']} {vuln_data['pkg_version']}) - severity: {vuln_data['severity']}, EPSS: {vuln_data['epss']:.2f}%, exploits: {vuln_data['has_exploits']}")
+            exploit_info = f"exploits: {vuln_data['has_exploits']}"
+            if vuln_data['has_exploits']:
+                exploit_info += f" (sources: {vuln_data['exploit_sources_count']})"
+            
+            print(f"  - {vuln_data['vuln_id']} ({vuln_data['vuln_type']}) ({vuln_data['pkg_name']} {vuln_data['pkg_version']}) - severity: {vuln_data['severity']}, EPSS: {vuln_data['epss']:.2f}%, {exploit_info}")
         
         print("Поиск findings для risk accept...")
         risk_findings_map = self.find_finding_ids(product_id, risk_vulns)
