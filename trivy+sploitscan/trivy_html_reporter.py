@@ -34,7 +34,10 @@ def generate_trivy_html_report(enriched_trivy_path, output_dir=None):
         return output_path
         
     except Exception as e:
+        import traceback
         print(f"ОШИБКА генерации HTML отчета: {e}")
+        print(f"Трассировка ошибки:")
+        traceback.print_exc()
         return None
 
 def collect_statistics_and_group_data(trivy_data):
@@ -98,7 +101,7 @@ def collect_statistics_and_group_data(trivy_data):
                     if 'VulnerabilityID' in vuln:
                         cve_id = vuln['VulnerabilityID']
                         severity = vuln.get('Severity', 'UNKNOWN').upper()
-                        has_exploits = has_real_exploits(vuln)
+                        has_exploits = has_any_exploits(vuln.get('sploitscan', {}))
                         
                         # Общая статистика (все уязвимости, включая дубли)
                         stats['total_cves'] += 1
@@ -184,42 +187,60 @@ def get_severity_weight(severity):
     }
     return severity_weights.get(severity.upper(), 0)
 
-def has_real_exploits(vuln):
-    """Проверяет, есть ли реальные эксплойты (игнорируя packetstorm search)"""
-    sploitscan = vuln.get('sploitscan', {})
+def has_any_exploits(sploitscan):
+    """Проверяет, есть ли эксплойты в любом источнике"""
+    # Если sploitscan - не словарь, то нет данных
+    if not isinstance(sploitscan, dict):
+        return False
     
-    # ПРОВЕРКА НА ОШИБКУ SPLOITSCAN
     if 'error' in sploitscan:
         return False
-        
-    exploit = sploitscan.get('exploit', {})
     
-    # Проверяем наличие реальных эксплойтов, исключая packetstorm search
-    github_pocs = exploit.get('github', {}).get('pocs', [])
-    exploitdb_list = exploit.get('ExploitDB Data', [])
-    vulncheck_data = exploit.get('vulncheck', {})
+    # 1. Проверяем GitHub PoCs
+    github_data = sploitscan.get('GitHub Data')
+    if github_data and isinstance(github_data, dict):
+        github_pocs = github_data.get('pocs', [])
+        if github_pocs and len(github_pocs) > 0:
+            return True
     
-    # Считаем только если есть реальные PoC, а не просто поисковые ссылки
-    if (github_pocs and len(github_pocs) > 0) or \
-       (exploitdb_list and len(exploitdb_list) > 0) or \
-       (vulncheck_data and len(vulncheck_data) > 0):
-        return True
+    # 2. Проверяем ExploitDB Data (по полю id)
+    exploitdb_list = sploitscan.get('ExploitDB Data', [])
+    if exploitdb_list:
+        for item in exploitdb_list:
+            if isinstance(item, dict) and item.get('id'):
+                return True
     
-    # Проверяем наличие Metasploit модулей
-    if 'metasploit' in str(exploit).lower():
-        return True
+    # 3. Проверяем NVD Data exploits
+    nvd_data = sploitscan.get('NVD Data')
+    if nvd_data and isinstance(nvd_data, dict):
+        nvd_exploits = nvd_data.get('exploits', [])
+        if nvd_exploits and len(nvd_exploits) > 0:
+            return True
+    
+    # 4. Проверяем Metasploit Data modules
+    metasploit_data = sploitscan.get('Metasploit Data')
+    if metasploit_data and isinstance(metasploit_data, dict):
+        metasploit_modules = metasploit_data.get('modules', [])
+        if metasploit_modules:
+            for module in metasploit_modules:
+                if isinstance(module, dict) and module.get('url'):
+                    return True
     
     return False
 
 def is_cisa_kev(vuln):
     """Проверяет, есть ли CVE в CISA KEV"""
-    sploitscan = vuln.get('sploitscan', {})
+    sploitscan = vuln.get('sploitscan')
+    
+    # Если sploitscan - не словарь, то нет данных
+    if not isinstance(sploitscan, dict):
+        return False
     
     # ПРОВЕРКА НА ОШИБКУ SPLOITSCAN
     if 'error' in sploitscan:
         return False
         
-    cisa_data = sploitscan.get('cisa_kev', {})
+    cisa_data = sploitscan.get('CISA Data', {})
     cisa_status = cisa_data.get('cisa_status', 'Not Listed')
     # Расширяем проверку на разные варианты обозначения "да"
     return cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
@@ -620,48 +641,46 @@ def generate_vulnerability_card(vuln):
     # Данные из SploitScan
     sploitscan = vuln.get('sploitscan', {})
     
-    # ОБРАБОТКА ОШИБКИ SPLOITSCAN
-    if 'error' in sploitscan:
+    # ОБРАБОТКА ОШИБКИ SPLOITSCAN И НЕПРАВИЛЬНОГО ТИПА
+    if not isinstance(sploitscan, dict) or 'error' in sploitscan:
         priority = 'Unknown'
         epss_score = 'N/A'
         cisa_status = 'Not Listed'
         ransomware_use = 'N/A'
-        github_pocs = []
-        exploitdb_list = []
-        metasploit_modules = []
-        has_exploits = False
         is_cisa_listed = False
+        
+        # Пустые данные об эксплойтах
+        github_pocs = []
+        exploitdb_items = []
+        nvd_exploits = []
+        metasploit_modules = []
+        other_exploits = []
     else:
         priority = sploitscan.get('priority', {}).get('Priority', 'Unknown')
         
         # БЕЗОПАСНОЕ ПОЛУЧЕНИЕ EPSS ДАННЫХ
-        epss_data_list = sploitscan.get('epss', {}).get('data', [])
-        epss_data = epss_data_list[0] if epss_data_list else {}
-        epss_score = epss_data.get('epss', 'N/A')
+        epss_data = sploitscan.get('epss', {})
+        if isinstance(epss_data, dict):
+            epss_data_list = epss_data.get('data', [])
+            epss_data_item = epss_data_list[0] if epss_data_list else {}
+            epss_score = epss_data_item.get('epss', 'N/A')
+        else:
+            epss_score = 'N/A'
         
-        cisa_data = sploitscan.get('cisa_kev', {})
+        cisa_data = sploitscan.get('CISA Data', {})
         cisa_status = cisa_data.get('cisa_status', 'Not Listed')
         ransomware_use = cisa_data.get('ransomware_use', 'N/A')
         
         # Определяем, находится ли CVE в списке CISA KEV
-        # Используем более широкую проверку для разных вариантов значений
         is_cisa_listed = cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
         
-        # Exploit данные
-        exploit_data = sploitscan.get('exploit', {})
-        github_pocs = exploit_data.get('github', {}).get('pocs', [])
-        exploitdb_list = exploit_data.get('ExploitDB Data', [])
-        metasploit_modules = []
-        
-        # Ищем Metasploit модули
-        for key, value in exploit_data.items():
-            if 'metasploit' in str(key).lower() or 'metasploit' in str(value).lower():
-                if isinstance(value, list):
-                    metasploit_modules.extend(value)
-                else:
-                    metasploit_modules.append(value)
-        
-        has_exploits = has_real_exploits(vuln)
+        # Получаем структурированные данные об эксплойтах из всех источников
+        exploit_data_dict = get_exploit_data(sploitscan)
+        github_pocs = exploit_data_dict['github_pocs']
+        exploitdb_items = exploit_data_dict['exploitdb_items']
+        nvd_exploits = exploit_data_dict['nvd_exploits']
+        metasploit_modules = exploit_data_dict['metasploit_modules']
+        other_exploits = exploit_data_dict['other_exploits']
     
     return f"""
     <div class="vulnerability-card border rounded-lg p-4 hover:shadow-md transition-shadow mb-4" 
@@ -671,7 +690,7 @@ def generate_vulnerability_card(vuln):
          data-severity="{severity}"
          data-epss="{epss_score if epss_score != 'N/A' else '0'}"
          data-cisa="{str(is_cisa_listed).lower()}" 
-         data-expl="{str(has_exploits).lower()}"
+         data-expl="{str(has_any_exploits(sploitscan) if isinstance(sploitscan, dict) else False).lower()}"
          data-status="{status.lower()}">
       
       <!-- Заголовок карточки -->
@@ -751,12 +770,7 @@ def generate_vulnerability_card(vuln):
           ''' if is_cisa_listed else ''}
           
           <!-- Exploits -->
-          {generate_exploits_section(github_pocs, exploitdb_list, metasploit_modules) if has_exploits else '''
-          <div>
-            <h5 class="font-medium mb-2">Public Exploits</h5>
-            <div class="muted text-sm">No public exploits found.</div>
-          </div>
-          '''}
+          {generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasploit_modules, other_exploits)}
           
           <!-- References -->
           {generate_references_section(references) if references else ''}
@@ -765,9 +779,84 @@ def generate_vulnerability_card(vuln):
       </details>
     </div>
     """
+
+def get_exploit_data(sploitscan):
+    """Извлекает структурированные данные об эксплойтах из различных источников"""
+    # Если sploitscan - не словарь, то нет данных
+    if not isinstance(sploitscan, dict) or 'error' in sploitscan:
+        return {
+            'github_pocs': [],
+            'exploitdb_items': [],
+            'nvd_exploits': [],
+            'metasploit_modules': [],
+            'other_exploits': []
+        }
     
-def generate_exploits_section(github_pocs, exploitdb_list, metasploit_modules):
-    """Генерирует секцию с эксплойтами"""
+    # 1. GitHub PoCs
+    github_pocs = []
+    github_data = sploitscan.get('GitHub Data')
+    if github_data and isinstance(github_data, dict):
+        github_pocs = github_data.get('pocs', [])
+    
+    # 2. ExploitDB Data - преобразуем id в URL
+    exploitdb_raw = sploitscan.get('ExploitDB Data', [])
+    exploitdb_items = []
+    for item in exploitdb_raw:
+        if isinstance(item, dict) and item.get('id'):
+            exploitdb_items.append({
+                'id': item['id'],
+                'url': f"https://www.exploit-db.com/exploits/{item['id']}",
+                'date': item.get('date', '')
+            })
+    
+    # 3. NVD Data exploits
+    nvd_exploits = []
+    nvd_data = sploitscan.get('NVD Data')
+    if nvd_data and isinstance(nvd_data, dict):
+        nvd_exploits = nvd_data.get('exploits', [])
+    
+    # 4. Metasploit Data modules
+    metasploit_modules = []
+    metasploit_data = sploitscan.get('Metasploit Data')
+    if metasploit_data and isinstance(metasploit_data, dict):
+        metasploit_modules = metasploit_data.get('modules', [])
+    
+    # 5. Другие источники
+    other_exploits = []
+    vulncheck_data = sploitscan.get('VulnCheck Data', {})
+    if vulncheck_data and len(vulncheck_data) > 0:
+        other_exploits.append({'source': 'VulnCheck', 'data': vulncheck_data})
+    
+    return {
+        'github_pocs': github_pocs,
+        'exploitdb_items': exploitdb_items,
+        'nvd_exploits': nvd_exploits,
+        'metasploit_modules': metasploit_modules,
+        'other_exploits': other_exploits
+    }
+
+def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasploit_modules, other_exploits=None):
+    """Генерирует секцию с эксплойтами из всех источников"""
+    if other_exploits is None:
+        other_exploits = []
+    
+    # Проверяем, есть ли вообще какие-то данные
+    has_any_exploits = (
+        (github_pocs and len(github_pocs) > 0) or
+        (exploitdb_items and len(exploitdb_items) > 0) or
+        (nvd_exploits and len(nvd_exploits) > 0) or
+        (metasploit_modules and len(metasploit_modules) > 0) or
+        (other_exploits and len(other_exploits) > 0)
+    )
+    
+    if not has_any_exploits:
+        return '''
+        <div>
+          <h5 class="font-medium mb-2">Public Exploits</h5>
+          <div class="muted text-sm">No public exploits found.</div>
+        </div>
+        '''
+    
     exploits_content = '<div><h5 class="font-medium mb-2">Public Exploits</h5><div class="space-y-3">'
     
     # GitHub PoCs
@@ -783,21 +872,35 @@ def generate_exploits_section(github_pocs, exploitdb_list, metasploit_modules):
                 exploits_content += f'<li><a href="{url}" target="_blank" class="link">{url}</a></li>'
         exploits_content += '</ul></div>'
     
-    # ExploitDB Data
-    if exploitdb_list:
+    # ExploitDB Items - ИСПРАВЛЕНО: показываем полный URL вместо "ExploitDB ID: ..."
+    if exploitdb_items:
         exploits_content += '''
         <div>
           <div class="font-medium text-sm mb-1">ExploitDB</div>
           <ul class="list-disc pl-5 space-y-1 text-sm">
         '''
-        for exploit in exploitdb_list[:5]:
-            if isinstance(exploit, dict):
-                url = exploit.get('url', '')
-                if url and 'packetstorm' not in url.lower():
-                    exploits_content += f'<li><a href="{url}" target="_blank" class="link">{url}</a></li>'
+        for item in exploitdb_items[:5]:
+            if item.get('url'):
+                # ПОКАЗЫВАЕМ ПОЛНЫЙ URL В ТЕКСТЕ ССЫЛКИ
+                exploits_content += f'<li><a href="{item["url"]}" target="_blank" class="link">{item["url"]}</a>'
+                if item.get('date'):
+                    exploits_content += f' <span class="text-xs muted">({item["date"]})</span>'
+                exploits_content += '</li>'
         exploits_content += '</ul></div>'
     
-    # Metasploit
+    # NVD Exploits
+    if nvd_exploits:
+        exploits_content += '''
+        <div>
+          <div class="font-medium text-sm mb-1">NVD References</div>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+        '''
+        for exploit_url in nvd_exploits[:5]:
+            if exploit_url:
+                exploits_content += f'<li><a href="{exploit_url}" target="_blank" class="link">{exploit_url}</a></li>'
+        exploits_content += '</ul></div>'
+    
+    # Metasploit Modules - ИСПРАВЛЕНО: показываем URL вместо имени, если URL есть
     if metasploit_modules:
         exploits_content += '''
         <div>
@@ -806,10 +909,21 @@ def generate_exploits_section(github_pocs, exploitdb_list, metasploit_modules):
         '''
         for module in metasploit_modules[:3]:
             if isinstance(module, dict):
-                name = module.get('name', module.get('title', 'Metasploit Module'))
-                exploits_content += f'<li>{name}</li>'
-            else:
-                exploits_content += f'<li>{module}</li>'
+                name = module.get('fullname', module.get('ref_name', 'Metasploit Module'))
+                url = module.get('url', '')
+                # ЕСЛИ ЕСТЬ URL - ПОКАЗЫВАЕМ ЕГО В ТЕКСТЕ, ИНАЧЕ ИМЯ
+                display_text = url if url else name
+                
+                if url:
+                    exploits_content += f'<li><a href="{url}" target="_blank" class="link">{display_text}</a>'
+                else:
+                    exploits_content += f'<li>{display_text}'
+                
+                if module.get('rank_label'):
+                    exploits_content += f' <span class="text-xs muted">({module["rank_label"]})</span>'
+                if module.get('disclosure_date'):
+                    exploits_content += f' <span class="text-xs muted">{module["disclosure_date"]}</span>'
+                exploits_content += '</li>'
         exploits_content += '</ul></div>'
     
     exploits_content += '</div></div>'

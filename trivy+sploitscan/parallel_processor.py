@@ -8,7 +8,7 @@ def process_single_cve(args):
     Обрабатывает одну CVE (для параллельной обработки)
     """
     cve_id, target_dir, attempt = args
-    result = run_sploitscan(cve_id, target_dir)
+    result = run_sploitscan(cve_id, target_dir, attempt)  # <-- передаем attempt
     
     if result['status'] == 'success':
         sploit_info = parse_sploitscan_data(result['file'])
