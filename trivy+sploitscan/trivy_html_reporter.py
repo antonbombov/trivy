@@ -656,10 +656,11 @@ def generate_vulnerability_card(vuln):
         metasploit_modules = []
         other_exploits = []
     else:
-        priority = sploitscan.get('priority', {}).get('Priority', 'Unknown')
+        # ИСПРАВЛЕНИЕ: Priority теперь с заглавной P
+        priority = sploitscan.get('Priority', {}).get('Priority', 'Unknown')
         
-        # БЕЗОПАСНОЕ ПОЛУЧЕНИЕ EPSS ДАННЫХ
-        epss_data = sploitscan.get('epss', {})
+        # ИСПРАВЛЕНИЕ: EPSS Data теперь с заглавными буквами и пробелом
+        epss_data = sploitscan.get('EPSS Data', {})
         if isinstance(epss_data, dict):
             epss_data_list = epss_data.get('data', [])
             epss_data_item = epss_data_list[0] if epss_data_list else {}
