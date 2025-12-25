@@ -5,6 +5,7 @@ from datetime import datetime
 from collections import defaultdict
 from html_templates import get_base_html, get_css_styles, get_javascript
 
+
 def generate_trivy_html_report(enriched_trivy_path, output_dir=None):
     """
     Генерирует HTML отчет из обогащенного отчета Trivy в стиле SploitScan
@@ -13,26 +14,35 @@ def generate_trivy_html_report(enriched_trivy_path, output_dir=None):
         # Загружаем обогащенный отчет
         with open(enriched_trivy_path, 'r', encoding='utf-8-sig') as f:
             trivy_data = json.load(f)
-        
+
         # Определяем путь для сохранения
         if output_dir is None:
-            output_dir = Path(__file__).parent
-        
+            # Если не указан, пробуем получить из конфига
+            from config_manager import load_config
+            config = load_config()
+            output_dir = Path(config.get('output_directory', Path(__file__).parent))
+        else:
+            output_dir = Path(output_dir)
+
+        # Создаем директорию, если её нет
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Сохраняем в указанной директории
         output_path = output_dir / f"{enriched_trivy_path.stem}_report.html"
-        
+
         # Собираем статистику и данные
         stats, grouped_vulnerabilities = collect_statistics_and_group_data(trivy_data)
-        
+
         # Генерируем HTML
         html_content = generate_html_content(trivy_data, stats, grouped_vulnerabilities)
-        
+
         # Сохраняем файл
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
-        
+
         print(f"HTML отчет создан: {output_path}")
         return output_path
-        
+
     except Exception as e:
         import traceback
         print(f"ОШИБКА генерации HTML отчета: {e}")

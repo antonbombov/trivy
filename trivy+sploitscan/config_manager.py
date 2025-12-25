@@ -3,6 +3,7 @@ import json
 import shutil
 from pathlib import Path
 
+
 def load_config():
     """
     Загружает конфигурацию из config.json или создает default
@@ -11,11 +12,13 @@ def load_config():
     default_config = {
         "sploitscan_path": "sploitscan",
         "scan_directory": "Scan",
-        "cache_directory": "SploitScanJsons", 
+        "cache_directory": "SploitScanJsons",
+        "output_directory": "Results",
+        "cache_max_days": 30,  # По умолчанию 30 дней
         "max_workers": None,
         "timeout": 60
     }
-    
+
     if config_path.exists():
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -24,8 +27,9 @@ def load_config():
         except Exception as e:
             print(f"ОШИБКА загрузки config.json: {e}")
             print("Используются настройки по умолчанию")
-    
+
     return default_config
+
 
 def save_config(config):
     """
@@ -40,12 +44,13 @@ def save_config(config):
         print(f"ОШИБКА сохранения config.json: {e}")
         return False
 
+
 def get_sploitscan_path(config):
     """
     Возвращает путь к sploitscan в зависимости от конфигурации
     """
     sploitscan_path = config['sploitscan_path']
-    
+
     if sploitscan_path == "sploitscan":
         if shutil.which("sploitscan"):
             return "sploitscan"
@@ -60,6 +65,7 @@ def get_sploitscan_path(config):
             print(f"❌ Файл не существует: {sploitscan_path}")
             return None
 
+
 def setup_directories(config):
     """
     Создает необходимые директории (использует абсолютные пути как есть)
@@ -67,8 +73,10 @@ def setup_directories(config):
     # Используем абсолютные пути как есть
     scan_dir = Path(config['scan_directory'])
     cache_dir = Path(config['cache_directory'])
-    
-    # Создаем только cache_dir, scan_dir не создаем
+    output_dir = Path(config['output_directory'])
+
+    # Создаем cache_dir и output_dir, scan_dir не создаем
     cache_dir.mkdir(parents=True, exist_ok=True)
-    
-    return scan_dir, cache_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    return scan_dir, cache_dir, output_dir

@@ -1,7 +1,9 @@
 {
-  "sploitscan_path": "d:\\Work\\tmp\\test\\SploitScan-0.14.3\\sploitscan.py",
-  "scan_directory": "c:\\work\\dist\\sploitscan\\SploitScan\\Scan\\reports",
-  "cache_directory": "c:\\work\\dist\\sploitscan\\SploitScan\\Scan\\cahce",
+  "sploitscan_path": "c:\\work\\dist\\sploitscan\\SploitScan\\sploitscan.py",
+  "scan_directory": "d:\\Work\\scripts\\TVE\\reports",
+  "cache_directory": "d:\\Work\\scripts\\TVE\\cache",
+  "output_directory": "d:\\Work\\scripts\\TVE\\results",
+  "cache_max_days": 5,
   "max_workers": null,
   "timeout": 60
 }
