@@ -81,6 +81,7 @@ def get_base_html():
 </body>
 </html>"""
 
+
 def get_css_styles():
     """Возвращает CSS стили"""
     return """
@@ -230,7 +231,141 @@ def get_css_styles():
       width: 0;
       height: 0;
     }
+
+    /* ДЛЯ ДЛИННЫХ НАЗВАНИЙ СЕКЦИЙ - ПЕРЕНОС СЛОВ */
+    .break-words {
+        word-break: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+
+    /* Убедимся, что текст занимает доступное пространство */
+    .min-w-0 {
+        min-width: 0;
+    }
+
+    .flex-shrink-0 {
+        flex-shrink: 0;
+    }
+
+    /* Анимация для стрелочки */
+    .rotate-180 {
+        transform: rotate(180deg);
+    }
+
+    /* Для плавной анимации раскрытия */
+    .section-content {
+        transition: max-height 0.3s ease;
+        overflow: hidden;
+    }
+
+    /* Улучшение отображения длинных имен пакетов */
+    .section-content a {
+        display: block;
+        max-width: 100%;
+        word-break: break-word;
+    }
+
+    /* Выравнивание по вертикали */
+    .align-middle {
+        vertical-align: middle;
+    }
+
+    /* Для кнопок с иконками */
+    .section-toggle {
+        flex-shrink: 0;
+    }
+
+    /* Для правильного переноса длинных названий секций */
+    .section-title {
+        display: block;
+        overflow-wrap: anywhere;
+    }
+
+    /* Улучшенные отступы для дерева навигации */
+    .tree-item {
+        margin-bottom: 0.25rem;
+    }
+
+    /* Подсветка активной секции */
+    :target {
+        animation: highlight 2s ease;
+    }
+
+    @keyframes highlight {
+        0% { background-color: rgba(99, 102, 241, 0.1); }
+        100% { background-color: transparent; }
+    }
+
+    /* Отступ для якорных ссылок на пакеты */
+    div[id] {
+        scroll-margin-top: 100px;
+    }
+
+    /* ИСПРАВЛЕННЫЙ ВАРИАНТ - ВОЗВРАЩАЕМ РАННИЙ СТИЛЬ СКРОЛЛБАРА */
+    .sticky-sidebar { 
+        position: sticky; 
+        top: 1rem;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+        /* СКРЫВАЕМ СКРОЛЛБАР У SIDEBAR */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    /* Скрываем скроллбар у sidebar в Chrome/Safari */
+    .sticky-sidebar::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+
+    .sections-container {
+        display: block;
+    }
+
+    .tree-content {
+        display: block;
+        max-height: none;
+    }
+
+    /* Ограничение высоты для раскрытых секций с ОРИГИНАЛЬНЫМ ТОНКИМ СКРОЛЛБАРОМ */
+    .section-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+
+    .section-content:not(.hidden) {
+        max-height: 250px;
+        overflow-y: auto;
+        margin-bottom: 8px;
+    }
+
+    /* ОРИГИНАЛЬНЫЙ ТОНКИЙ СКРОЛЛБАР ДЛЯ ВЫПАДАЮЩИХ МЕНЮ (как было изначально) */
+    .section-content:not(.hidden)::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .section-content:not(.hidden)::-webkit-scrollbar-track {
+        background: #f3f4f6;
+        border-radius: 2px;
+    }
+
+    .section-content:not(.hidden)::-webkit-scrollbar-thumb {
+        background: #d1d5db;
+        border-radius: 2px;
+    }
+
+    .dark .section-content:not(.hidden)::-webkit-scrollbar-track {
+        background: #374151;
+    }
+
+    .dark .section-content:not(.hidden)::-webkit-scrollbar-thumb {
+        background: #4b5563;
+    }
     """
+
 
 def get_javascript():
     """Возвращает JavaScript код"""
@@ -275,17 +410,10 @@ def get_javascript():
       let selectedStatuses = new Set();
 
       // Update counter function
-      function updateVisibleCounter() {
-        let visibleCards = 0;
-        vulnerabilityCards.forEach(function(card) {
-          if (card.style.display !== 'none') {
-            visibleCards++;
-          }
-        });
-        
+      function updateVisibleCounter(visibleCards) {
         visibleCount.textContent = visibleCards;
         totalCount.textContent = vulnerabilityCards.length;
-        
+
         // Show/hide counter based on whether any filters are active
         const hasActiveFilters = 
           input.value.trim() !== '' ||
@@ -295,7 +423,7 @@ def get_javascript():
           selectedPrios.size > 0 ||
           selectedSeverities.size > 0 ||
           selectedStatuses.size > 0;
-        
+
         if (hasActiveFilters) {
           visibleCounter.classList.remove('hidden');
         } else {
@@ -350,7 +478,7 @@ def get_javascript():
 
       // Event listeners for other filters
       input.addEventListener('input', applyFilters);
-      
+
       if (epssInput) epssInput.addEventListener('input', applyFilters);
       if (cisaCheckbox) cisaCheckbox.addEventListener('change', applyFilters);
       if (exploitCheckbox) exploitCheckbox.addEventListener('change', applyFilters);
@@ -385,6 +513,10 @@ def get_javascript():
       function applyFilters() {
         const q = input.value.toLowerCase().trim();
         const epssMin = epssInput ? parseFloat(epssInput.value) / 100 || 0 : 0;
+        const showCISA = cisaCheckbox && cisaCheckbox.checked;
+        const showExploits = exploitCheckbox && exploitCheckbox.checked;
+
+        let visibleCards = 0;
 
         // Apply filters to all cards
         vulnerabilityCards.forEach(function(card) {
@@ -405,37 +537,38 @@ def get_javascript():
           }
 
           // Priority filter
-          if (selectedPrios.size > 0 && !selectedPrios.has(cardPr)) {
+          if (visible && selectedPrios.size > 0 && !selectedPrios.has(cardPr)) {
             visible = false;
           }
 
           // Severity filter
-          if (selectedSeverities.size > 0 && !selectedSeverities.has(cardSeverity)) {
+          if (visible && selectedSeverities.size > 0 && !selectedSeverities.has(cardSeverity)) {
             visible = false;
           }
 
           // Status filter
-          if (selectedStatuses.size > 0 && !selectedStatuses.has(cardStatus)) {
+          if (visible && selectedStatuses.size > 0 && !selectedStatuses.has(cardStatus)) {
             visible = false;
           }
 
           // EPSS filter
-          if (cardEpss < epssMin) {
+          if (visible && cardEpss < epssMin) {
             visible = false;
           }
 
           // CISA KEV filter
-          if (cisaCheckbox && cisaCheckbox.checked && !cardCisa) {
+          if (visible && showCISA && !cardCisa) {
             visible = false;
           }
 
           // Exploit filter
-          if (exploitCheckbox && exploitCheckbox.checked && !cardExpl) {
+          if (visible && showExploits && !cardExpl) {
             visible = false;
           }
 
           if (visible) {
             card.style.display = '';
+            visibleCards++;
           } else {
             card.style.display = 'none';
           }
@@ -443,9 +576,9 @@ def get_javascript():
 
         // Update package and section visibility
         updatePackageAndSectionVisibility();
-        
+
         // Update visible counter
-        updateVisibleCounter();
+        updateVisibleCounter(visibleCards);
       }
 
       function updatePackageAndSectionVisibility() {
@@ -476,5 +609,106 @@ def get_javascript():
 
       // Initialize on load
       applyFilters();
+    });
+
+    // Tree navigation toggle and smooth scroll
+    document.addEventListener('DOMContentLoaded', function() {
+      // Функция для переключения секции
+      function toggleSection(sectionId, button) {
+        const content = document.getElementById(`section-${sectionId}`);
+        const icon = button.querySelector('svg');
+
+        if (content.classList.contains('hidden')) {
+          content.classList.remove('hidden');
+          icon.classList.add('rotate-180');
+        } else {
+          content.classList.add('hidden');
+          icon.classList.remove('rotate-180');
+        }
+      }
+
+      // Обработчики для кнопок раскрытия/скрытия (только для иконок)
+      document.querySelectorAll('.section-toggle').forEach(function(button) {
+        button.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation(); // Останавливаем всплытие
+          const sectionId = this.getAttribute('data-section');
+          toggleSection(sectionId, this);
+        });
+      });
+
+      // Отключаем раскрытие при клике на ссылку секции
+      document.querySelectorAll('.section-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+          // Если это ссылка на секцию, останавливаем всплытие
+          e.stopPropagation();
+        });
+      });
+
+      // Обработчик кликов на ссылках в боковой панели для плавной прокрутки
+      document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+        anchor.addEventListener('click', function(e) {
+          const href = this.getAttribute('href');
+          if (href === '#') return;
+
+          const targetId = href.substring(1);
+          const targetElement = document.getElementById(targetId);
+
+          if (targetElement) {
+            e.preventDefault();
+
+            // Раскрываем родительскую секцию, если она скрыта и это ссылка на пакет
+            if (targetId.includes('__')) {
+              const sectionId = targetId.split('__')[0];
+              const sectionToggle = document.querySelector(`.section-toggle[data-section="${sectionId}"]`);
+              const sectionContent = document.getElementById(`section-${sectionId}`);
+
+              if (sectionToggle && sectionContent && sectionContent.classList.contains('hidden')) {
+                toggleSection(sectionId, sectionToggle);
+              }
+            }
+
+            // Плавная прокрутка
+            const headerOffset = 96; // Отступ для фиксированного хедера
+            const elementPosition = targetElement.getBoundingClientRect().top;
+            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+            window.scrollTo({
+              top: offsetPosition,
+              behavior: 'smooth'
+            });
+          }
+        });
+      });
+
+      // Auto-expand section if URL has hash on page load
+      if (window.location.hash) {
+        const targetId = window.location.hash.substring(1);
+
+        // Если это ссылка на пакет, раскрываем его секцию
+        if (targetId.includes('__')) {
+          const sectionId = targetId.split('__')[0];
+          const sectionToggle = document.querySelector(`.section-toggle[data-section="${sectionId}"]`);
+          const sectionContent = document.getElementById(`section-${sectionId}`);
+
+          if (sectionToggle && sectionContent && sectionContent.classList.contains('hidden')) {
+            // Даем время на загрузку DOM
+            setTimeout(function() {
+              toggleSection(sectionId, sectionToggle);
+            }, 100);
+          }
+        }
+      }
+
+      // Вызываем при загрузке и при изменении размера окна
+      setTimeout(updateSectionsHeight, 100); // Даем время на рендеринг
+      window.addEventListener('resize', updateSectionsHeight);
+
+      // Также обновляем при раскрытии/закрытии секций
+      document.querySelectorAll('.section-toggle').forEach(function(button) {
+        button.addEventListener('click', function() {
+          setTimeout(updateSectionsHeight, 350); // После анимации
+        });
+      });
     });
     """

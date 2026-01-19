@@ -50,6 +50,7 @@ def generate_trivy_html_report(enriched_trivy_path, output_dir=None):
         traceback.print_exc()
         return None
 
+
 def collect_statistics_and_group_data(trivy_data):
     """
     Собирает статистику и группирует уязвимости по разделам и пакетам
@@ -83,22 +84,22 @@ def collect_statistics_and_group_data(trivy_data):
         'unique_low_with_exploits': 0,
         'unique_unknown_with_exploits': 0
     }
-    
+
     grouped_vulnerabilities = defaultdict(lambda: defaultdict(list))
     processed_cves = {}  # Для отслеживания уникальных CVE и их атрибутов: {cve_id: {'severity': '', 'has_exploits': bool}}
-    
+
     if 'Results' in trivy_data:
         for result in trivy_data['Results']:
             # Используем Type для группировки, если есть, иначе Target
             section_type = result.get('Type', result.get('Class', 'Unknown'))
             target = result.get('Target', 'Unknown')
-            
+
             # Создаем понятное имя раздела
             if section_type and section_type != 'Unknown':
                 section_name = f"{section_type} ({target})"
             else:
                 section_name = target
-            
+
             if 'Vulnerabilities' in result:
                 # СОРТИРОВКА: Сортируем уязвимости по severity перед добавлением
                 vulnerabilities_sorted = sorted(
@@ -106,16 +107,16 @@ def collect_statistics_and_group_data(trivy_data):
                     key=lambda x: get_severity_weight(x.get('Severity', 'UNKNOWN')),
                     reverse=True  # По убыванию критичности
                 )
-                
+
                 for vuln in vulnerabilities_sorted:
                     if 'VulnerabilityID' in vuln:
                         cve_id = vuln['VulnerabilityID']
                         severity = vuln.get('Severity', 'UNKNOWN').upper()
                         has_exploits = has_any_exploits(vuln.get('sploitscan', {}))
-                        
+
                         # Общая статистика (все уязвимости, включая дубли)
                         stats['total_cves'] += 1
-                        
+
                         if severity == 'CRITICAL':
                             stats['critical'] += 1
                             if has_exploits:
@@ -136,10 +137,10 @@ def collect_statistics_and_group_data(trivy_data):
                             stats['unknown'] += 1
                             if has_exploits:
                                 stats['unknown_with_exploits'] += 1
-                        
+
                         if has_exploits:
                             stats['with_exploits'] += 1
-                        
+
                         # Уникальная статистика
                         if cve_id not in processed_cves:
                             processed_cves[cve_id] = {
@@ -147,7 +148,7 @@ def collect_statistics_and_group_data(trivy_data):
                                 'has_exploits': has_exploits
                             }
                             stats['unique_total'] += 1
-                            
+
                             # Уникальная статистика по severity
                             if severity == 'CRITICAL':
                                 stats['unique_critical'] += 1
@@ -169,20 +170,21 @@ def collect_statistics_and_group_data(trivy_data):
                                 stats['unique_unknown'] += 1
                                 if has_exploits:
                                     stats['unique_unknown_with_exploits'] += 1
-                            
+
                             # Уникальная статистика по эксплойтам
                             if has_exploits:
                                 stats['unique_exploits'] += 1
-                            
+
                             # Статистика по CISA KEV (только для уникальных CVE)
                             if is_cisa_kev(vuln):
                                 stats['cisa_kev'] += 1
-                        
+
                         # Группировка по пакетам (все уязвимости, включая дубли)
                         pkg_name = vuln.get('PkgName', 'Unknown Package')
                         grouped_vulnerabilities[section_name][pkg_name].append(vuln)
-    
+
     return stats, grouped_vulnerabilities
+
 
 def get_severity_weight(severity):
     """
@@ -197,36 +199,37 @@ def get_severity_weight(severity):
     }
     return severity_weights.get(severity.upper(), 0)
 
+
 def has_any_exploits(sploitscan):
     """Проверяет, есть ли эксплойты в любом источнике"""
     # Если sploitscan - не словарь, то нет данных
     if not isinstance(sploitscan, dict):
         return False
-    
+
     if 'error' in sploitscan:
         return False
-    
+
     # 1. Проверяем GitHub PoCs
     github_data = sploitscan.get('GitHub Data')
     if github_data and isinstance(github_data, dict):
         github_pocs = github_data.get('pocs', [])
         if github_pocs and len(github_pocs) > 0:
             return True
-    
+
     # 2. Проверяем ExploitDB Data (по полю id)
     exploitdb_list = sploitscan.get('ExploitDB Data', [])
     if exploitdb_list:
         for item in exploitdb_list:
             if isinstance(item, dict) and item.get('id'):
                 return True
-    
+
     # 3. Проверяем NVD Data exploits
     nvd_data = sploitscan.get('NVD Data')
     if nvd_data and isinstance(nvd_data, dict):
         nvd_exploits = nvd_data.get('exploits', [])
         if nvd_exploits and len(nvd_exploits) > 0:
             return True
-    
+
     # 4. Проверяем Metasploit Data modules
     metasploit_data = sploitscan.get('Metasploit Data')
     if metasploit_data and isinstance(metasploit_data, dict):
@@ -235,25 +238,27 @@ def has_any_exploits(sploitscan):
             for module in metasploit_modules:
                 if isinstance(module, dict) and module.get('url'):
                     return True
-    
+
     return False
+
 
 def is_cisa_kev(vuln):
     """Проверяет, есть ли CVE в CISA KEV"""
     sploitscan = vuln.get('sploitscan')
-    
+
     # Если sploitscan - не словарь, то нет данных
     if not isinstance(sploitscan, dict):
         return False
-    
+
     # ПРОВЕРКА НА ОШИБКУ SPLOITSCAN
     if 'error' in sploitscan:
         return False
-        
+
     cisa_data = sploitscan.get('CISA Data', {})
     cisa_status = cisa_data.get('cisa_status', 'Not Listed')
     # Расширяем проверку на разные варианты обозначения "да"
     return cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
+
 
 def format_epss(epss_score):
     """Форматирует EPSS score в проценты"""
@@ -265,12 +270,13 @@ def format_epss(epss_score):
     except (ValueError, TypeError):
         return 'N/A'
 
+
 def get_cvss_data(vuln):
     """Извлекает CVSS данные с учетом приоритетов вендоров"""
     cvss_data = vuln.get('CVSS', {})
     severity_source = vuln.get('SeveritySource', '')
     vendor_severity = vuln.get('VendorSeverity', {})
-    
+
     # 1. Пытаемся взять из того же источника что и Severity
     if severity_source and severity_source in cvss_data:
         data = cvss_data[severity_source]
@@ -278,13 +284,13 @@ def get_cvss_data(vuln):
         v2_score = data.get('V2Score')
         v3_vector = data.get('V3Vector')
         v2_vector = data.get('V2Vector')
-        
+
         # Предпочитаем V3 над V2
         if v3_score is not None:
             return v3_score, v3_vector or v2_vector or 'N/A'
         elif v2_score is not None:
             return v2_score, v2_vector or 'N/A'
-    
+
     # 2. Ищем источник с максимальным VendorSeverity
     if vendor_severity:
         # Сортируем вендоров по убыванию VendorSeverity
@@ -296,34 +302,35 @@ def get_cvss_data(vuln):
                 v2_score = data.get('V2Score')
                 v3_vector = data.get('V3Vector')
                 v2_vector = data.get('V2Vector')
-                
+
                 # Предпочитаем V3 над V2
                 if v3_score is not None:
                     return v3_score, v3_vector or v2_vector or 'N/A'
                 elif v2_score is not None:
                     return v2_score, v2_vector or 'N/A'
-    
+
     # 3. Fallback: берем первого попавшегося (оригинальная логика)
     for source, data in cvss_data.items():
         v3_score = data.get('V3Score')
         v2_score = data.get('V2Score')
         v3_vector = data.get('V3Vector')
         v2_vector = data.get('V2Vector')
-        
+
         # Предпочитаем V3 над V2
         if v3_score is not None:
             return v3_score, v3_vector or v2_vector or 'N/A'
         elif v2_score is not None:
             return v2_score, v2_vector or 'N/A'
-    
+
     return 'N/A', 'N/A'
+
 
 def generate_html_content(trivy_data, stats, grouped_vulnerabilities):
     """
     Генерирует полный HTML контент
     """
     main_content = generate_main_content(stats, grouped_vulnerabilities)
-    
+
     html = get_base_html().format(
         main_content=main_content,
         total_cves=stats['total_cves'],
@@ -331,8 +338,9 @@ def generate_html_content(trivy_data, stats, grouped_vulnerabilities):
         css_styles=get_css_styles(),
         javascript=get_javascript()
     )
-    
+
     return html
+
 
 def generate_main_content(stats, grouped_vulnerabilities):
     """
@@ -340,10 +348,10 @@ def generate_main_content(stats, grouped_vulnerabilities):
     """
     # Статистические карточки
     stats_cards = generate_stats_cards(stats)
-    
+
     # Контент с группировкой по разделам
     vulnerabilities_content = generate_vulnerabilities_content(grouped_vulnerabilities)
-    
+
     return f"""
     <div class="grid grid-cols-1 lg:grid-cols-[290px_minmax(0,1fr)] gap-6">
       <!-- Sidebar -->
@@ -357,7 +365,7 @@ def generate_main_content(stats, grouped_vulnerabilities):
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4 mb-6">
           {stats_cards}
         </div>
-        
+
         <!-- Counter for visible cards -->
         <div id="visibleCounter" class="mb-4 px-3 py-2 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300 rounded-md text-sm font-medium hidden">
           <span id="visibleCount">0</span> of <span id="totalCount">{stats['total_cves']}</span> vulnerabilities visible
@@ -371,11 +379,12 @@ def generate_main_content(stats, grouped_vulnerabilities):
     </div>
     """
 
+
 def generate_stats_cards(stats):
     """Генерирует карточки со статистикой"""
     total = stats["total_cves"]
     unique_total = stats["unique_total"]
-    
+
     # Рассчитываем проценты для каждого уровня критичности (от общего количества)
     critical_percent = f"{(stats['critical'] / total * 100):.1f}%" if total > 0 else "0%"
     high_percent = f"{(stats['high'] / total * 100):.1f}%" if total > 0 else "0%"
@@ -383,7 +392,7 @@ def generate_stats_cards(stats):
     low_percent = f"{(stats['low'] / total * 100):.1f}%" if total > 0 else "0%"
     unknown_percent = f"{(stats['unknown'] / total * 100):.1f}%" if total > 0 else "0%"
     exploits_percent = f"{(stats['with_exploits'] / total * 100):.1f}%" if total > 0 else "0%"
-    
+
     cards = [
         # Total CVEs card (без изменений)
         f'''<div class="card">
@@ -393,7 +402,7 @@ def generate_stats_cards(stats):
                 <div class="text-xs muted mt-1">Unique: {unique_total}</div>
             </div>
         </div>''',
-        
+
         # Critical card
         f'''<div class="card">
             <div class="card-body text-center">
@@ -406,7 +415,7 @@ def generate_stats_cards(stats):
                 </div>
             </div>
         </div>''',
-        
+
         # High card
         f'''<div class="card">
             <div class="card-body text-center">
@@ -419,7 +428,7 @@ def generate_stats_cards(stats):
                 </div>
             </div>
         </div>''',
-        
+
         # Medium card
         f'''<div class="card">
             <div class="card-body text-center">
@@ -432,7 +441,7 @@ def generate_stats_cards(stats):
                 </div>
             </div>
         </div>''',
-        
+
         # Low card
         f'''<div class="card">
             <div class="card-body text-center">
@@ -445,7 +454,7 @@ def generate_stats_cards(stats):
                 </div>
             </div>
         </div>''',
-        
+
         # Unknown card
         f'''<div class="card">
             <div class="card-body text-center">
@@ -458,7 +467,7 @@ def generate_stats_cards(stats):
                 </div>
             </div>
         </div>''',
-        
+
         # Exploits card (без изменений)
         f'''<div class="card">
             <div class="card-body text-center">
@@ -471,19 +480,54 @@ def generate_stats_cards(stats):
     ]
     return '\n'.join(cards)
 
+
 def generate_sidebar(grouped_vulnerabilities):
-    """Генерирует боковую панель с навигацией и фильтрами"""
+    """Генерирует боковую панель с навигацией в виде дерева"""
+
     sections_list = []
-    for section_name in grouped_vulnerabilities.keys():
+
+    for section_name, packages in grouped_vulnerabilities.items():
+        # Создаем ID для секции
         section_id = section_name.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')
-        sections_list.append(f'<a href="#{section_id}" class="block rounded px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">{section_name}</a>')
-    
+
+        # Создаем список пакетов для этой секции
+        packages_list = []
+        for pkg_name in packages.keys():
+            # Создаем ID для пакета (комбинация section_id + pkg_name)
+            pkg_id = f"{section_id}__{pkg_name.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')}"
+            packages_list.append(
+                f'<a href="#{pkg_id}" class="block rounded px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 pl-6 break-words" title="{pkg_name}">{pkg_name}</a>'
+            )
+
+        packages_html = '\n'.join(packages_list)
+
+        sections_list.append(f"""
+        <div class="tree-item mb-1" data-section-id="{section_id}">
+          <div class="flex items-start justify-between">
+            <a href="#{section_id}" class="flex-1 rounded px-2 py-1 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 break-words min-w-0 section-link">
+              <span class="inline-block align-middle">{section_name}</span>
+            </a>
+            <button class="section-toggle ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex-shrink-0 mt-0.5" 
+                    data-section="{section_id}"
+                    title="Show packages">
+              <svg class="h-4 w-4 transform transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+          <div id="section-{section_id}" class="section-content hidden pl-2 mt-1" data-packages-count="{len(packages)}">
+            {packages_html if packages_html else '<div class="text-xs muted px-4 py-1">No packages</div>'}
+          </div>
+        </div>
+        """)
+
     sections_html = '\n'.join(sections_list)
-    
+
+    # Остальная часть функции остается без изменений...
     return f"""
     <div class="sticky sticky-sidebar">
-      <div class="overflow-y-auto scrollbar-hide" style="max-height: calc(100vh - 120px);">
-        <!-- Filters -->
+      <div id="sectionsContainer" class="sections-container">
+        <!-- Filters (оставляем без изменений) -->
         <div class="card mb-4">
           <div class="card-header">
             <h2 class="text-sm font-semibold tracking-wide uppercase muted">Filters</h2>
@@ -493,7 +537,7 @@ def generate_sidebar(grouped_vulnerabilities):
               <label class="block text-xs font-medium muted mb-1">Quick search (CVE ID or Package)</label>
               <input id="searchInput" type="text" placeholder="Search CVE or package…" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
             </div>
-            
+
             <div>
               <label class="block text-xs font-medium muted mb-1">Priority</label>
               <div class="flex flex-wrap gap-2">
@@ -504,7 +548,7 @@ def generate_sidebar(grouped_vulnerabilities):
                 <button data-prio="D" class="prio chip priority-D">D</button>
               </div>
             </div>
-            
+
             <div>
               <label class="block text-xs font-medium muted mb-1">Severity</label>
               <div class="flex flex-wrap gap-2">
@@ -515,13 +559,12 @@ def generate_sidebar(grouped_vulnerabilities):
                 <button data-severity="UNKNOWN" class="severity chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Unknown</button>
               </div>
             </div>
-            
+
             <div>
               <label class="block text-xs font-medium muted mb-1">EPSS ≥ %</label>
               <input id="filterEPSS" type="number" min="0" max="100" step="0.01" placeholder="0.00%" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800" />
             </div>
-            
-            <!-- ДОБАВЛЕНО: Status filter -->
+
             <div>
               <label class="block text-xs font-medium muted mb-1">Status</label>
               <div class="flex flex-wrap gap-2">
@@ -531,30 +574,30 @@ def generate_sidebar(grouped_vulnerabilities):
                 <button data-status="unknown" class="status chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Unknown</button>
               </div>
             </div>
-            
+
             <div class="flex items-center gap-2">
               <input id="filterCISA" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
               <label for="filterCISA" class="text-sm">CISA KEV only</label>
             </div>
-            
+
             <div class="flex items-center gap-2">
               <input id="filterExploit" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-600 dark:border-gray-600" />
               <label for="filterExploit" class="text-sm">Has public exploits</label>
             </div>
-            
+
             <div class="pt-2">
               <button id="resetFilters" class="w-full text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Reset filters</button>
             </div>
           </div>
         </div>
 
-        <!-- Sections Navigation -->
+        <!-- Tree Navigation -->
         <div class="card">
           <div class="card-header">
             <h2 class="text-sm font-semibold tracking-wide uppercase muted">Sections</h2>
           </div>
-          <div class="card-body">
-            <div class="space-y-1">
+          <div id="treeContent" class="card-body py-2 tree-content">
+            <div class="space-y-1" id="sectionsList">
               {sections_html}
             </div>
           </div>
@@ -563,13 +606,14 @@ def generate_sidebar(grouped_vulnerabilities):
     </div>
     """
 
+
 def generate_vulnerabilities_content(grouped_vulnerabilities):
     """Генерирует контент с уязвимостями, сгруппированными по разделам"""
     content_parts = []
-    
+
     for section_name, packages in grouped_vulnerabilities.items():
         section_id = section_name.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')
-        
+
         # Заголовок раздела
         section_content = f"""
         <article id="{section_id}" class="card">
@@ -578,42 +622,49 @@ def generate_vulnerabilities_content(grouped_vulnerabilities):
           </div>
           <div class="card-body">
         """
-        
-        # Уязвимости по пакетам
+
+        # Уязвимости по пакетам - передаем section_name
         for pkg_name, vulnerabilities in packages.items():
-            section_content += generate_package_section(pkg_name, vulnerabilities)
-        
+            section_content += generate_package_section(section_name, pkg_name, vulnerabilities)
+
         section_content += """
           </div>
         </article>
         """
         content_parts.append(section_content)
-    
+
     return '\n'.join(content_parts)
 
-def generate_package_section(pkg_name, vulnerabilities):
+
+def generate_package_section(section_name, pkg_name, vulnerabilities):
     """Генерирует секцию для одного пакета"""
+    # Создаем уникальный ID для пакета
+    section_id = section_name.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')
+    pkg_safe = pkg_name.replace(' ', '_').replace('(', '').replace(')', '').replace('/', '_')
+    pkg_id = f"{section_id}__{pkg_safe}"
+
     # ДОПОЛНИТЕЛЬНАЯ СОРТИРОВКА: Сортируем уязвимости внутри пакета
     vulnerabilities_sorted = sorted(
         vulnerabilities,
         key=lambda x: get_severity_weight(x.get('Severity', 'UNKNOWN')),
         reverse=True  # По убыванию критичности
     )
-    
+
     package_content = f"""
-    <div class="mb-6 last:mb-0">
+    <div id="{pkg_id}" class="mb-6 last:mb-0">
       <h3 class="font-semibold text-md mb-3 border-b pb-2">{pkg_name}</h3>
       <div class="space-y-3">
     """
 
     for vuln in vulnerabilities_sorted:
         package_content += generate_vulnerability_card(vuln)
-    
+
     package_content += """
       </div>
     </div>
     """
     return package_content
+
 
 def generate_vulnerability_card(vuln):
     """Генерирует детальную карточку для одной уязвимости"""
@@ -621,17 +672,19 @@ def generate_vulnerability_card(vuln):
     severity = vuln.get('Severity', 'UNKNOWN')
     description = vuln.get('Description', 'No description available')
     # Экранируем описание
-    description = description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
-    
+    description = description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"',
+                                                                                                      '&quot;').replace(
+        "'", '&#39;')
+
     pkg_name = vuln.get('PkgName', 'Unknown Package')
     installed_version = vuln.get('InstalledVersion', 'Unknown')
     fixed_version = vuln.get('FixedVersion', 'Not fixed')
     status = vuln.get('Status', 'Unknown')
     references = vuln.get('References', [])
-    
+
     # CVSS данные (ИСПРАВЛЕННАЯ ЛОГИКА)
     cvss_score, cvss_vector = get_cvss_data(vuln)
-    
+
     # Определяем цвет для CVSS
     cvss_color = 'gray'
     if cvss_score != 'N/A':
@@ -647,10 +700,10 @@ def generate_vulnerability_card(vuln):
                 cvss_color = 'green'
         except (ValueError, TypeError):
             cvss_color = 'gray'
-    
+
     # Данные из SploitScan
     sploitscan = vuln.get('sploitscan', {})
-    
+
     # ОБРАБОТКА ОШИБКИ SPLOITSCAN И НЕПРАВИЛЬНОГО ТИПА
     if not isinstance(sploitscan, dict) or 'error' in sploitscan:
         priority = 'Unknown'
@@ -658,7 +711,7 @@ def generate_vulnerability_card(vuln):
         cisa_status = 'Not Listed'
         ransomware_use = 'N/A'
         is_cisa_listed = False
-        
+
         # Пустые данные об эксплойтах
         github_pocs = []
         exploitdb_items = []
@@ -668,7 +721,7 @@ def generate_vulnerability_card(vuln):
     else:
         # ИСПРАВЛЕНИЕ: Priority теперь с заглавной P
         priority = sploitscan.get('Priority', {}).get('Priority', 'Unknown')
-        
+
         # ИСПРАВЛЕНИЕ: EPSS Data теперь с заглавными буквами и пробелом
         epss_data = sploitscan.get('EPSS Data', {})
         if isinstance(epss_data, dict):
@@ -677,14 +730,14 @@ def generate_vulnerability_card(vuln):
             epss_score = epss_data_item.get('epss', 'N/A')
         else:
             epss_score = 'N/A'
-        
+
         cisa_data = sploitscan.get('CISA Data', {})
         cisa_status = cisa_data.get('cisa_status', 'Not Listed')
         ransomware_use = cisa_data.get('ransomware_use', 'N/A')
-        
+
         # Определяем, находится ли CVE в списке CISA KEV
         is_cisa_listed = cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
-        
+
         # Получаем структурированные данные об эксплойтах из всех источников
         exploit_data_dict = get_exploit_data(sploitscan)
         github_pocs = exploit_data_dict['github_pocs']
@@ -692,7 +745,7 @@ def generate_vulnerability_card(vuln):
         nvd_exploits = exploit_data_dict['nvd_exploits']
         metasploit_modules = exploit_data_dict['metasploit_modules']
         other_exploits = exploit_data_dict['other_exploits']
-    
+
     return f"""
     <div class="vulnerability-card border rounded-lg p-4 hover:shadow-md transition-shadow mb-4" 
          data-cve="{cve_id}" 
@@ -703,7 +756,7 @@ def generate_vulnerability_card(vuln):
          data-cisa="{str(is_cisa_listed).lower()}" 
          data-expl="{str(has_any_exploits(sploitscan) if isinstance(sploitscan, dict) else False).lower()}"
          data-status="{status.lower()}">
-      
+
       <!-- Заголовок карточки -->
       <div class="flex justify-between items-start mb-3">
         <div class="flex items-center gap-2 flex-wrap">
@@ -721,7 +774,7 @@ def generate_vulnerability_card(vuln):
           <div class="muted">Status: {status}</div>
         </div>
       </div>
-      
+
       <!-- Базовая информация -->
       <div class="mb-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -740,20 +793,20 @@ def generate_vulnerability_card(vuln):
           </div>
         </div>
       </div>
-      
+
       <!-- Описание -->
       <div class="mb-3">
         <p class="text-sm">{description}</p>
       </div>
-      
+
       <!-- Детальная информация (раскрывающаяся) -->
       <details class="mt-3">
         <summary class="cursor-pointer font-medium text-sm text-brand-600 hover:text-brand-700">
           Show detailed information
         </summary>
-        
+
         <div class="mt-3 space-y-4 border-t pt-3">
-          
+
           <!-- CVSS Vector -->
           <div>
             <h5 class="font-medium mb-2">CVSS Vector</h5>
@@ -761,7 +814,7 @@ def generate_vulnerability_card(vuln):
               <code class="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded">{cvss_vector}</code>
             </div>
           </div>
-          
+
           <!-- EPSS Score -->
           <div>
             <h5 class="font-medium mb-2">EPSS Score</h5>
@@ -769,7 +822,7 @@ def generate_vulnerability_card(vuln):
               <span class="muted">Probability:</span> {format_epss(epss_score)}
             </div>
           </div>
-          
+
           <!-- CISA KEV Details -->
           {f'''
           <div>
@@ -779,17 +832,18 @@ def generate_vulnerability_card(vuln):
             </div>
           </div>
           ''' if is_cisa_listed else ''}
-          
+
           <!-- Exploits -->
           {generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasploit_modules, other_exploits)}
-          
+
           <!-- References -->
           {generate_references_section(references) if references else ''}
-          
+
         </div>
       </details>
     </div>
     """
+
 
 def get_exploit_data(sploitscan):
     """Извлекает структурированные данные об эксплойтах из различных источников"""
@@ -802,13 +856,13 @@ def get_exploit_data(sploitscan):
             'metasploit_modules': [],
             'other_exploits': []
         }
-    
+
     # 1. GitHub PoCs
     github_pocs = []
     github_data = sploitscan.get('GitHub Data')
     if github_data and isinstance(github_data, dict):
         github_pocs = github_data.get('pocs', [])
-    
+
     # 2. ExploitDB Data - преобразуем id в URL
     exploitdb_raw = sploitscan.get('ExploitDB Data', [])
     exploitdb_items = []
@@ -819,25 +873,25 @@ def get_exploit_data(sploitscan):
                 'url': f"https://www.exploit-db.com/exploits/{item['id']}",
                 'date': item.get('date', '')
             })
-    
+
     # 3. NVD Data exploits
     nvd_exploits = []
     nvd_data = sploitscan.get('NVD Data')
     if nvd_data and isinstance(nvd_data, dict):
         nvd_exploits = nvd_data.get('exploits', [])
-    
+
     # 4. Metasploit Data modules
     metasploit_modules = []
     metasploit_data = sploitscan.get('Metasploit Data')
     if metasploit_data and isinstance(metasploit_data, dict):
         metasploit_modules = metasploit_data.get('modules', [])
-    
+
     # 5. Другие источники
     other_exploits = []
     vulncheck_data = sploitscan.get('VulnCheck Data', {})
     if vulncheck_data and len(vulncheck_data) > 0:
         other_exploits.append({'source': 'VulnCheck', 'data': vulncheck_data})
-    
+
     return {
         'github_pocs': github_pocs,
         'exploitdb_items': exploitdb_items,
@@ -846,20 +900,21 @@ def get_exploit_data(sploitscan):
         'other_exploits': other_exploits
     }
 
+
 def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasploit_modules, other_exploits=None):
     """Генерирует секцию с эксплойтами из всех источников"""
     if other_exploits is None:
         other_exploits = []
-    
+
     # Проверяем, есть ли вообще какие-то данные
     has_any_exploits = (
-        (github_pocs and len(github_pocs) > 0) or
-        (exploitdb_items and len(exploitdb_items) > 0) or
-        (nvd_exploits and len(nvd_exploits) > 0) or
-        (metasploit_modules and len(metasploit_modules) > 0) or
-        (other_exploits and len(other_exploits) > 0)
+            (github_pocs and len(github_pocs) > 0) or
+            (exploitdb_items and len(exploitdb_items) > 0) or
+            (nvd_exploits and len(nvd_exploits) > 0) or
+            (metasploit_modules and len(metasploit_modules) > 0) or
+            (other_exploits and len(other_exploits) > 0)
     )
-    
+
     if not has_any_exploits:
         return '''
         <div>
@@ -867,9 +922,9 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
           <div class="muted text-sm">No public exploits found.</div>
         </div>
         '''
-    
+
     exploits_content = '<div><h5 class="font-medium mb-2">Public Exploits</h5><div class="space-y-3">'
-    
+
     # GitHub PoCs
     if github_pocs:
         exploits_content += '''
@@ -882,7 +937,7 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
             if url:
                 exploits_content += f'<li><a href="{url}" target="_blank" class="link">{url}</a></li>'
         exploits_content += '</ul></div>'
-    
+
     # ExploitDB Items - ИСПРАВЛЕНО: показываем полный URL вместо "ExploitDB ID: ..."
     if exploitdb_items:
         exploits_content += '''
@@ -898,7 +953,7 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
                     exploits_content += f' <span class="text-xs muted">({item["date"]})</span>'
                 exploits_content += '</li>'
         exploits_content += '</ul></div>'
-    
+
     # NVD Exploits
     if nvd_exploits:
         exploits_content += '''
@@ -910,7 +965,7 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
             if exploit_url:
                 exploits_content += f'<li><a href="{exploit_url}" target="_blank" class="link">{exploit_url}</a></li>'
         exploits_content += '</ul></div>'
-    
+
     # Metasploit Modules - ИСПРАВЛЕНО: показываем URL вместо имени, если URL есть
     if metasploit_modules:
         exploits_content += '''
@@ -924,21 +979,22 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
                 url = module.get('url', '')
                 # ЕСЛИ ЕСТЬ URL - ПОКАЗЫВАЕМ ЕГО В ТЕКСТЕ, ИНАЧЕ ИМЯ
                 display_text = url if url else name
-                
+
                 if url:
                     exploits_content += f'<li><a href="{url}" target="_blank" class="link">{display_text}</a>'
                 else:
                     exploits_content += f'<li>{display_text}'
-                
+
                 if module.get('rank_label'):
                     exploits_content += f' <span class="text-xs muted">({module["rank_label"]})</span>'
                 if module.get('disclosure_date'):
                     exploits_content += f' <span class="text-xs muted">{module["disclosure_date"]}</span>'
                 exploits_content += '</li>'
         exploits_content += '</ul></div>'
-    
+
     exploits_content += '</div></div>'
     return exploits_content
+
 
 def generate_references_section(references):
     """Генерирует секцию с ссылками"""
@@ -947,12 +1003,13 @@ def generate_references_section(references):
       <h5 class="font-medium mb-2">References</h5>
       <ul class="list-disc pl-5 space-y-1 text-sm">
     '''
-    
+
     for ref in references[:10]:  # Ограничиваем 10 ссылками
         references_content += f'<li><a href="{ref}" target="_blank" class="link">{ref}</a></li>'
-    
+
     references_content += '</ul></div>'
-    return references_content    
+    return references_content
+
 
 def main():
     """
@@ -960,14 +1017,15 @@ def main():
     """
     script_dir = Path(__file__).parent
     enriched_files = list(script_dir.glob("*_enriched.json"))
-    
+
     if not enriched_files:
         print("Нет обогащенных отчетов Trivy")
         return
-    
+
     for enriched_file in enriched_files:
         print(f"Генерация HTML отчета для: {enriched_file.name}")
         generate_trivy_html_report(enriched_file)
+
 
 if __name__ == "__main__":
     main()
