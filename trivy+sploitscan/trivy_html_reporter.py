@@ -818,10 +818,9 @@ def generate_vulnerability_card(vuln):
           Show detailed information
         </summary>
 
-        <div class="mt-3 space-y-4 border-t pt-3">
-
+        <div class="mt-3 space-y-0">
           <!-- CVSS Vector -->
-          <div>
+          <div class="pb-4 border-b border-gray-200 dark:border-gray-700">
             <h5 class="font-medium mb-2">CVSS Vector</h5>
             <div class="text-sm">
               <code class="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded">{cvss_vector}</code>
@@ -829,7 +828,7 @@ def generate_vulnerability_card(vuln):
           </div>
 
           <!-- EPSS Score -->
-          <div>
+          <div class="py-4 border-b border-gray-200 dark:border-gray-700">
             <h5 class="font-medium mb-2">EPSS Score</h5>
             <div class="text-sm">
               <span class="muted">Probability:</span> {format_epss(epss_score)}
@@ -838,7 +837,7 @@ def generate_vulnerability_card(vuln):
 
           <!-- CISA KEV Details -->
           {f'''
-          <div>
+          <div class="py-4 border-b border-gray-200 dark:border-gray-700">
             <h5 class="font-medium mb-2">CISA KEV Details</h5>
             <div class="text-sm">
               <div><span class="muted">Ransomware Use:</span> {ransomware_use}</div>
@@ -929,29 +928,28 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
     )
 
     if not has_any_exploits:
-        return '''
-        <div>
-          <h5 class="font-medium mb-2">Public Exploits</h5>
-          <div class="muted text-sm">No public exploits found.</div>
-        </div>
-        '''
+        return '''<div></div>'''  # Пустой div вместо текста "No public exploits found"
 
-    exploits_content = '<div><h5 class="font-medium mb-2">Public Exploits</h5><div class="space-y-3">'
+    exploits_content = '''
+    <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+      <h5 class="font-medium mb-2">Public Exploits</h5>
+      <div class="space-y-3 pb-3">
+    '''
 
     # GitHub PoCs
     if github_pocs:
         exploits_content += '''
         <div>
-          <div class="font-medium text-sm mb-1">GitHub</div>
+          <div class="font-medium text-sm mb-1">GitHub PoCs</div>
           <ul class="list-disc pl-5 space-y-1 text-sm">
         '''
         for poc in github_pocs[:5]:
             url = poc.get('html_url', '')
             if url:
-                exploits_content += f'<li><a href="{url}" target="_blank" class="link">{url}</a></li>'
+                exploits_content += f'<li><a href="{url}" target="_blank" class="link break-all">{url}</a></li>'
         exploits_content += '</ul></div>'
 
-    # ExploitDB Items - ИСПРАВЛЕНО: показываем полный URL вместо "ExploitDB ID: ..."
+    # ExploitDB Items
     if exploitdb_items:
         exploits_content += '''
         <div>
@@ -960,8 +958,7 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
         '''
         for item in exploitdb_items[:5]:
             if item.get('url'):
-                # ПОКАЗЫВАЕМ ПОЛНЫЙ URL В ТЕКСТЕ ССЫЛКИ
-                exploits_content += f'<li><a href="{item["url"]}" target="_blank" class="link">{item["url"]}</a>'
+                exploits_content += f'<li><a href="{item["url"]}" target="_blank" class="link break-all">{item["url"]}</a>'
                 if item.get('date'):
                     exploits_content += f' <span class="text-xs muted">({item["date"]})</span>'
                 exploits_content += '</li>'
@@ -976,10 +973,10 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
         '''
         for exploit_url in nvd_exploits[:5]:
             if exploit_url:
-                exploits_content += f'<li><a href="{exploit_url}" target="_blank" class="link">{exploit_url}</a></li>'
+                exploits_content += f'<li><a href="{exploit_url}" target="_blank" class="link break-all">{exploit_url}</a></li>'
         exploits_content += '</ul></div>'
 
-    # Metasploit Modules - ИСПРАВЛЕНО: показываем URL вместо имени, если URL есть
+    # Metasploit Modules
     if metasploit_modules:
         exploits_content += '''
         <div>
@@ -990,11 +987,10 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
             if isinstance(module, dict):
                 name = module.get('fullname', module.get('ref_name', 'Metasploit Module'))
                 url = module.get('url', '')
-                # ЕСЛИ ЕСТЬ URL - ПОКАЗЫВАЕМ ЕГО В ТЕКСТЕ, ИНАЧЕ ИМЯ
                 display_text = url if url else name
 
                 if url:
-                    exploits_content += f'<li><a href="{url}" target="_blank" class="link">{display_text}</a>'
+                    exploits_content += f'<li><a href="{url}" target="_blank" class="link break-all">{display_text}</a>'
                 else:
                     exploits_content += f'<li>{display_text}'
 
@@ -1012,13 +1008,13 @@ def generate_exploits_section(github_pocs, exploitdb_items, nvd_exploits, metasp
 def generate_references_section(references):
     """Генерирует секцию с ссылками"""
     references_content = '''
-    <div>
+    <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
       <h5 class="font-medium mb-2">References</h5>
-      <ul class="list-disc pl-5 space-y-1 text-sm">
+      <ul class="list-disc pl-5 space-y-1 text-sm pb-3">
     '''
 
     for ref in references[:10]:  # Ограничиваем 10 ссылками
-        references_content += f'<li><a href="{ref}" target="_blank" class="link">{ref}</a></li>'
+        references_content += f'<li><a href="{ref}" target="_blank" class="link break-all">{ref}</a></li>'
 
     references_content += '</ul></div>'
     return references_content
