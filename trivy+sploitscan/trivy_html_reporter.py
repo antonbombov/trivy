@@ -523,11 +523,10 @@ def generate_sidebar(grouped_vulnerabilities):
 
     sections_html = '\n'.join(sections_list)
 
-    # Остальная часть функции остается без изменений...
     return f"""
     <div class="sticky sticky-sidebar">
-      <div id="sectionsContainer" class="sections-container">
-        <!-- Filters (оставляем без изменений) -->
+      <div class="sections-container scrollbar-hide">
+        <!-- Filters -->
         <div class="card mb-4">
           <div class="card-header">
             <h2 class="text-sm font-semibold tracking-wide uppercase muted">Filters</h2>
@@ -566,11 +565,25 @@ def generate_sidebar(grouped_vulnerabilities):
             </div>
 
             <div>
-              <label class="block text-xs font-medium muted mb-1">Status</label>
+              <div class="flex items-center gap-1 mb-1">
+                <label class="text-xs font-medium muted">Status</label>
+                <a href="https://docs.defectdojo.com/supported_tools/parsers/file/trivy/" 
+                   target="_blank" 
+                   title="Trivy vulnerability status documentation"
+                   class="inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 text-xs no-print">
+                  ?
+                </a>
+              </div>
               <div class="flex flex-wrap gap-2">
                 <button data-status="fixed" class="status chip bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-100">Fixed</button>
                 <button data-status="affected" class="status chip bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-100">Affected</button>
                 <button data-status="will_not_fix" class="status chip bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-100">Will not fix</button>
+                <button data-status="fix_deferred" class="status chip bg-blue-100 text-blue-700 dark:bg-blue-800/40 dark:text-blue-100">Fix deferred</button>
+                <button data-status="end_of_life" class="status chip bg-purple-100 text-purple-700 dark:bg-purple-800/40 dark:text-purple-100">End of life</button>
+                <button data-status="end_of_support" class="status chip bg-indigo-100 text-indigo-700 dark:bg-indigo-800/40 dark:text-indigo-100">End of support</button>
+                <button data-status="end_of_service_life" class="status chip bg-pink-100 text-pink-700 dark:bg-pink-800/40 dark:text-pink-100">End of service life</button>
+                <button data-status="unaffected" class="status chip bg-emerald-100 text-emerald-700 dark:bg-emerald-800/40 dark:text-emerald-100">Unaffected</button>
+                <button data-status="under_investigation" class="status chip bg-amber-100 text-amber-700 dark:bg-amber-800/40 dark:text-amber-100">Under investigation</button>
                 <button data-status="unknown" class="status chip bg-yellow-100 text-yellow-700 dark:bg-yellow-800/40 dark:text-yellow-100">Unknown</button>
               </div>
             </div>
@@ -596,8 +609,8 @@ def generate_sidebar(grouped_vulnerabilities):
           <div class="card-header">
             <h2 class="text-sm font-semibold tracking-wide uppercase muted">Sections</h2>
           </div>
-          <div id="treeContent" class="card-body py-2 tree-content">
-            <div class="space-y-1" id="sectionsList">
+          <div class="card-body py-2 tree-content">
+            <div class="space-y-1">
               {sections_html}
             </div>
           </div>

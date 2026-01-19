@@ -162,7 +162,24 @@ def get_css_styles():
     .table-row { border-bottom: 1px solid #f3f4f6; }
     .dark .table-row { border-color: #374151; }
 
-    .sticky-sidebar { position: sticky; top: 1rem; height: calc(100vh - 2rem); }
+    /* УНИФИЦИРОВАННЫЕ СТИЛИ ДЛЯ БОКОВОЙ ПАНЕЛИ */
+    .sticky-sidebar { 
+        position: sticky; 
+        top: 1rem;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+        /* СКРЫВАЕМ СКРОЛЛБАР У SIDEBAR */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    /* Скрываем скроллбар у sidebar в Chrome/Safari */
+    .sticky-sidebar::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+
     .scroll-area { max-height: calc(100vh - 12rem); }
 
     .chip {
@@ -187,6 +204,37 @@ def get_css_styles():
     .priority-B { background: #fef3c7; color: #92400e; }
     .priority-C { background: #dbeafe; color: #1e40af; }
     .priority-D { background: #dcfce7; color: #065f46; }
+
+    /* Status color chips */
+    .bg-blue-100 { background-color: #dbeafe; }
+    .text-blue-700 { color: #1e40af; }
+    .dark .bg-blue-800\/40 { background-color: rgba(30, 64, 175, 0.4); }
+    .dark .text-blue-100 { color: #dbeafe; }
+
+    .bg-purple-100 { background-color: #e9d5ff; }
+    .text-purple-700 { color: #7e22ce; }
+    .dark .bg-purple-800\/40 { background-color: rgba(126, 34, 206, 0.4); }
+    .dark .text-purple-100 { color: #e9d5ff; }
+
+    .bg-indigo-100 { background-color: #e0e7ff; }
+    .text-indigo-700 { color: #3730a3; }
+    .dark .bg-indigo-800\/40 { background-color: rgba(55, 48, 163, 0.4); }
+    .dark .text-indigo-100 { color: #e0e7ff; }
+
+    .bg-pink-100 { background-color: #fce7f3; }
+    .text-pink-700 { color: #be185d; }
+    .dark .bg-pink-800\/40 { background-color: rgba(190, 24, 93, 0.4); }
+    .dark .text-pink-100 { color: #fce7f3; }
+
+    .bg-emerald-100 { background-color: #d1fae5; }
+    .text-emerald-700 { color: #047857; }
+    .dark .bg-emerald-800\/40 { background-color: rgba(4, 120, 87, 0.4); }
+    .dark .text-emerald-100 { color: #d1fae5; }
+
+    .bg-amber-100 { background-color: #fef3c7; }
+    .text-amber-700 { color: #b45309; }
+    .dark .bg-amber-800\/40 { background-color: rgba(180, 83, 9, 0.4); }
+    .dark .text-amber-100 { color: #fef3c7; }
 
     @media print {
       .no-print { display: none !important; }
@@ -253,35 +301,6 @@ def get_css_styles():
         transform: rotate(180deg);
     }
 
-    /* Для плавной анимации раскрытия */
-    .section-content {
-        transition: max-height 0.3s ease;
-        overflow: hidden;
-    }
-
-    /* Улучшение отображения длинных имен пакетов */
-    .section-content a {
-        display: block;
-        max-width: 100%;
-        word-break: break-word;
-    }
-
-    /* Выравнивание по вертикали */
-    .align-middle {
-        vertical-align: middle;
-    }
-
-    /* Для кнопок с иконками */
-    .section-toggle {
-        flex-shrink: 0;
-    }
-
-    /* Для правильного переноса длинных названий секций */
-    .section-title {
-        display: block;
-        overflow-wrap: anywhere;
-    }
-
     /* Улучшенные отступы для дерева навигации */
     .tree-item {
         margin-bottom: 0.25rem;
@@ -302,24 +321,7 @@ def get_css_styles():
         scroll-margin-top: 100px;
     }
 
-    /* ИСПРАВЛЕННЫЙ ВАРИАНТ - ВОЗВРАЩАЕМ РАННИЙ СТИЛЬ СКРОЛЛБАРА */
-    .sticky-sidebar { 
-        position: sticky; 
-        top: 1rem;
-        max-height: calc(100vh - 2rem);
-        overflow-y: auto;
-        /* СКРЫВАЕМ СКРОЛЛБАР У SIDEBAR */
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE/Edge */
-    }
-
-    /* Скрываем скроллбар у sidebar в Chrome/Safari */
-    .sticky-sidebar::-webkit-scrollbar {
-        display: none;
-        width: 0;
-        height: 0;
-    }
-
+    /* СТИЛИ ДЛЯ ВЫПАДАЮЩЕГО ДЕРЕВА НАВИГАЦИИ */
     .sections-container {
         display: block;
     }
@@ -340,6 +342,13 @@ def get_css_styles():
         max-height: 250px;
         overflow-y: auto;
         margin-bottom: 8px;
+    }
+
+    /* Улучшение отображения длинных имен пакетов */
+    .section-content a {
+        display: block;
+        max-width: 100%;
+        word-break: break-word;
     }
 
     /* ОРИГИНАЛЬНЫЙ ТОНКИЙ СКРОЛЛБАР ДЛЯ ВЫПАДАЮЩИХ МЕНЮ (как было изначально) */
@@ -363,6 +372,16 @@ def get_css_styles():
 
     .dark .section-content:not(.hidden)::-webkit-scrollbar-thumb {
         background: #4b5563;
+    }
+
+    /* Выравнивание по вертикали */
+    .align-middle {
+        vertical-align: middle;
+    }
+
+    /* Для кнопок с иконками */
+    .section-toggle {
+        flex-shrink: 0;
     }
     """
 
@@ -611,7 +630,7 @@ def get_javascript():
       applyFilters();
     });
 
-    // Tree navigation toggle and smooth scroll
+    // Tree navigation toggle and smooth scroll (ОБЪЕДИНЕННЫЙ БЛОК)
     document.addEventListener('DOMContentLoaded', function() {
       // Функция для переключения секции
       function toggleSection(sectionId, button) {
@@ -645,7 +664,7 @@ def get_javascript():
         });
       });
 
-      // Обработчик кликов на ссылках в боковой панели для плавной прокрутки
+      // Обработчик кликов на ссылках для плавной прокрутки
       document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
         anchor.addEventListener('click', function(e) {
           const href = this.getAttribute('href');
@@ -699,16 +718,5 @@ def get_javascript():
           }
         }
       }
-
-      // Вызываем при загрузке и при изменении размера окна
-      setTimeout(updateSectionsHeight, 100); // Даем время на рендеринг
-      window.addEventListener('resize', updateSectionsHeight);
-
-      // Также обновляем при раскрытии/закрытии секций
-      document.querySelectorAll('.section-toggle').forEach(function(button) {
-        button.addEventListener('click', function() {
-          setTimeout(updateSectionsHeight, 350); // После анимации
-        });
-      });
     });
     """
