@@ -78,6 +78,13 @@ def get_base_html():
   <script>
     {javascript}
   </script>
+    <!-- Scroll to top button -->
+  <button id="scrollToTop" class="fixed bottom-6 right-6 p-3 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 transition-all duration-200 opacity-0 transform translate-y-4 no-print" 
+          aria-label="Scroll to top">
+    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+    </svg>
+  </button>
 </body>
 </html>"""
 
@@ -718,5 +725,31 @@ def get_javascript():
           }
         }
       }
+    });
+    
+        // Scroll to top button
+    document.addEventListener('DOMContentLoaded', function() {
+      const scrollToTopBtn = document.getElementById('scrollToTop');
+      
+      if (!scrollToTopBtn) return;
+      
+      // Показываем/скрываем кнопку при прокрутке
+      window.addEventListener('scroll', function() {
+        if (window.pageYOffset > 300) {
+          scrollToTopBtn.classList.remove('opacity-0', 'translate-y-4');
+          scrollToTopBtn.classList.add('opacity-100', 'translate-y-0');
+        } else {
+          scrollToTopBtn.classList.remove('opacity-100', 'translate-y-0');
+          scrollToTopBtn.classList.add('opacity-0', 'translate-y-4');
+        }
+      });
+      
+      // Плавная прокрутка наверх
+      scrollToTopBtn.addEventListener('click', function() {
+        window.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        });
+      });
     });
     """
