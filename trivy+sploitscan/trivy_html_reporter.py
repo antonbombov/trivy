@@ -34,7 +34,7 @@ def generate_trivy_html_report(enriched_trivy_path, output_dir=None):
         stats, grouped_vulnerabilities = collect_statistics_and_group_data(trivy_data)
 
         # Генерируем HTML
-        html_content = generate_html_content(trivy_data, stats, grouped_vulnerabilities)
+        html_content = generate_html_content(trivy_data, stats, grouped_vulnerabilities, enriched_trivy_path.name)
 
         # Сохраняем файл
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -202,11 +202,12 @@ def get_severity_weight(severity):
 
 def has_any_exploits(sploitscan):
     """Проверяет, есть ли эксплойты в любом источнике"""
-    # Если sploitscan - не словарь, то нет данных
-    if not isinstance(sploitscan, dict):
+    # Если sploitscan - пустой список (ошибка сканирования)
+    if isinstance(sploitscan, list) and len(sploitscan) == 0:
         return False
 
-    if 'error' in sploitscan:
+    # Если sploitscan - не словарь или пустой словарь
+    if not isinstance(sploitscan, dict) or not sploitscan:
         return False
 
     # 1. Проверяем GitHub PoCs
@@ -246,29 +247,29 @@ def is_cisa_kev(vuln):
     """Проверяет, есть ли CVE в CISA KEV"""
     sploitscan = vuln.get('sploitscan')
 
-    # Если sploitscan - не словарь, то нет данных
-    if not isinstance(sploitscan, dict):
+    # Если sploitscan - пустой список (ошибка сканирования)
+    if isinstance(sploitscan, list) and len(sploitscan) == 0:
         return False
 
-    # ПРОВЕРКА НА ОШИБКУ SPLOITSCAN
-    if 'error' in sploitscan:
+    # Если sploitscan - не словарь или пустой словарь
+    if not isinstance(sploitscan, dict) or not sploitscan:
         return False
 
     cisa_data = sploitscan.get('CISA Data', {})
-    cisa_status = cisa_data.get('cisa_status', 'Not Listed')
-    # Расширяем проверку на разные варианты обозначения "да"
+    cisa_status = cisa_data.get('cisa_status', 'Not scanned')  # ← Меняем дефолт
+
     return cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
 
 
 def format_epss(epss_score):
     """Форматирует EPSS score в проценты"""
-    if epss_score == 'N/A':
-        return 'N/A'
+    if epss_score == 'Not scanned' or epss_score == 'N/A':
+        return 'Not scanned'
     try:
         # Умножаем на 100 и форматируем с 2 знаками после запятой
         return f"{float(epss_score) * 100:.2f}%"
     except (ValueError, TypeError):
-        return 'N/A'
+        return 'Not scanned'
 
 
 def get_cvss_data(vuln):
@@ -325,14 +326,22 @@ def get_cvss_data(vuln):
     return 'N/A', 'N/A'
 
 
-def generate_html_content(trivy_data, stats, grouped_vulnerabilities):
+def generate_html_content(trivy_data, stats, grouped_vulnerabilities, report_filename):
     """
     Генерирует полный HTML контент
     """
+    from config_manager import load_config
+
+    config = load_config()
+    project_version = config.get('project_version', '1.0.0')
+    artifact_name = get_artifact_name(report_filename)
+
     main_content = generate_main_content(stats, grouped_vulnerabilities)
 
     html = get_base_html().format(
         main_content=main_content,
+        artifact_name=artifact_name,
+        project_version=project_version,
         total_cves=stats['total_cves'],
         timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         css_styles=get_css_styles(),
@@ -717,12 +726,27 @@ def generate_vulnerability_card(vuln):
     # Данные из SploitScan
     sploitscan = vuln.get('sploitscan', {})
 
-    # ОБРАБОТКА ОШИБКИ SPLOITSCAN И НЕПРАВИЛЬНОГО ТИПА
-    if not isinstance(sploitscan, dict) or 'error' in sploitscan:
-        priority = 'Unknown'
-        epss_score = 'N/A'
-        cisa_status = 'Not Listed'
-        ransomware_use = 'N/A'
+    # ОБРАБОТКА ОШИБОК SPLOITSCAN
+    if isinstance(sploitscan, list) and len(sploitscan) == 0:
+        # Ошибка сканирования - пустой список []
+        priority = 'Not scanned'
+        epss_score = 'Not scanned'
+        cisa_status = 'Not scanned'
+        ransomware_use = 'Not scanned'
+        is_cisa_listed = False
+
+        # Пустые данные об эксплойтах
+        github_pocs = []
+        exploitdb_items = []
+        nvd_exploits = []
+        metasploit_modules = []
+        other_exploits = []
+    elif not isinstance(sploitscan, dict) or not sploitscan:
+        # Нет данных или неправильный формат
+        priority = 'Not scanned'
+        epss_score = 'Not scanned'
+        cisa_status = 'Not scanned'
+        ransomware_use = 'Not scanned'
         is_cisa_listed = False
 
         # Пустые данные об эксплойтах
@@ -732,21 +756,20 @@ def generate_vulnerability_card(vuln):
         metasploit_modules = []
         other_exploits = []
     else:
-        # ИСПРАВЛЕНИЕ: Priority теперь с заглавной P
-        priority = sploitscan.get('Priority', {}).get('Priority', 'Unknown')
+        # Нормальные данные
+        priority = sploitscan.get('Priority', {}).get('Priority', 'Not scanned')
 
-        # ИСПРАВЛЕНИЕ: EPSS Data теперь с заглавными буквами и пробелом
         epss_data = sploitscan.get('EPSS Data', {})
         if isinstance(epss_data, dict):
             epss_data_list = epss_data.get('data', [])
             epss_data_item = epss_data_list[0] if epss_data_list else {}
-            epss_score = epss_data_item.get('epss', 'N/A')
+            epss_score = epss_data_item.get('epss', 'Not scanned')
         else:
-            epss_score = 'N/A'
+            epss_score = 'Not scanned'
 
         cisa_data = sploitscan.get('CISA Data', {})
-        cisa_status = cisa_data.get('cisa_status', 'Not Listed')
-        ransomware_use = cisa_data.get('ransomware_use', 'N/A')
+        cisa_status = cisa_data.get('cisa_status', 'Not scanned')
+        ransomware_use = cisa_data.get('ransomware_use', 'Not scanned')
 
         # Определяем, находится ли CVE в списке CISA KEV
         is_cisa_listed = cisa_status in ['Listed', 'Yes', 'YES', 'listed', 'yes']
@@ -765,9 +788,9 @@ def generate_vulnerability_card(vuln):
          data-package="{pkg_name}" 
          data-prio="{priority}" 
          data-severity="{severity}"
-         data-epss="{epss_score if epss_score != 'N/A' else '0'}"
+         data-epss="{epss_score if epss_score != 'Not scanned' else '0'}"
          data-cisa="{str(is_cisa_listed).lower()}" 
-         data-expl="{str(has_any_exploits(sploitscan) if isinstance(sploitscan, dict) else False).lower()}"
+         data-expl="{str(has_any_exploits(sploitscan)).lower()}"
          data-status="{status.lower()}">
 
       <!-- Заголовок карточки -->
@@ -860,7 +883,7 @@ def generate_vulnerability_card(vuln):
 def get_exploit_data(sploitscan):
     """Извлекает структурированные данные об эксплойтах из различных источников"""
     # Если sploitscan - не словарь, то нет данных
-    if not isinstance(sploitscan, dict) or 'error' in sploitscan:
+    if isinstance(sploitscan, list) or not isinstance(sploitscan, dict):
         return {
             'github_pocs': [],
             'exploitdb_items': [],
@@ -1019,6 +1042,30 @@ def generate_references_section(references):
     references_content += '</ul></div>'
     return references_content
 
+
+def get_artifact_name(report_filename):
+    """Извлекает имя артефакта из имени файла (без .json)"""
+    return Path(report_filename).stem.replace('_enriched', '')
+
+
+def get_scan_datetime(trivy_data):
+    """Извлекает дату сканирования из отчета Trivy"""
+    # Пробуем получить из Created в ImageConfig
+    if 'Metadata' in trivy_data:
+        metadata = trivy_data['Metadata']
+        if 'ImageConfig' in metadata and metadata['ImageConfig']:
+            config = metadata['ImageConfig']
+            if 'created' in config:
+                try:
+                    # Формат: "2024-01-15T12:30:45Z"
+                    created_str = config['created'].replace('Z', '+00:00')
+                    dt = datetime.fromisoformat(created_str)
+                    return dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+
+    # Если не нашли, возвращаем текущую дату генерации отчета
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 def main():
     """

@@ -14,9 +14,10 @@ def load_config():
         "scan_directory": "Scan",
         "cache_directory": "SploitScanJsons",
         "output_directory": "Results",
-        "cache_max_days": 30,  # По умолчанию 30 дней
+        "cache_max_days": 30,
         "max_workers": None,
-        "timeout": 60
+        "timeout": 60,
+        "project_version": "1.0.0"  # <-- ДОБАВЛЕНО
     }
 
     if config_path.exists():
