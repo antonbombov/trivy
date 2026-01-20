@@ -6,7 +6,6 @@ RUN apt-get update -qq && apt-get install -y -qq wget git tar && rm -rf /var/lib
 
 RUN git clone https://github.com/antonbombov/trivy
 
-# Заменяем wget на git clone для SploitScan
 RUN git clone https://github.com/antonbombov/SploitScan /sploitscan
 
 RUN pip install --no-cache-dir -r /sploitscan/requirements.txt
@@ -22,7 +21,8 @@ RUN echo '{ \
   "output_directory": "/scan/trivy/trivy+sploitscan/results", \
   "cache_max_days": 30, \
   "max_workers": null, \
-  "timeout": 90 \
+  "timeout": 90, \
+  "project_version": "0.4.0" \
 }' > /scan/trivy/trivy+sploitscan/config.json
 
 RUN echo '#!/bin/bash\n\
